@@ -31,8 +31,6 @@ pub struct Complex {
     pub im: f64,
 }
 
-
-
 impl Complex {
     /// `0 + 0i`
     pub const ZERO: Complex = Complex::new(0.0, 0.0);
