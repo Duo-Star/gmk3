@@ -1,20 +1,26 @@
-//! 3×3 复矩阵 `Mat3C` —— 齐次坐标下的几何线性代数内核。
+// src/pakoo_forest/calc/matrix3c.rs
+//! 3×3 复矩阵 `Mat3C` —— 线性代数内核。
 //!
 //! # 约定
 //!
 //! - **存储**：行优先，`m[row][col]`，字段公开可直接访问；
-//! - **向量约定**：列向量。`M·v` 用 [`Mat3C::mul_vec`]，几何变换写作 `p' = M·p`；
-//!   行向量 `v·M` 等价于 `Mᵀ·v`，用 [`Mat3C::transpose_mul_vec`]；
-//! - **与几何解耦**：本模块只做纯线性代数，向量一律以 `[Complex; 3]` 表示，
-//!   点 / 直线 / 圆锥曲线等几何对象之后以 Newtype 封装；
-//! - **对称矩阵与行列约定无关**：圆锥曲线矩阵 `C`（`pᵀ C p = 0`）等自伴情形
-//!   不受上述列向量约定的影响。
+//! - **向量约定**：列向量。`M·v` 用 [`Mat3C::mul_vec`]（线性映射 `p' = M·p`）；
+//!   行向量 `c·M` 用 [`Mat3C::mul_cov`]（或 `Cov3C::mul_mat`）；
+//! - **与几何解耦**：本模块只做纯线性代数（`Mat3C`/`Vec3C`/`Cov3C`），
+//!   不含任何几何语义；几何对象以后以 Newtype 封装这些类型；
+//! - **对称矩阵不受行列向量约定影响**。
+//!
+//! 与向量构成的乘法代数：
+//!
+//! | 运算 | 结果 |
+//! |---|---|
+//! | `Mat3C * Vec3C` | `Vec3C` |
+//! | `Cov3C * Mat3C` | `Cov3C` |
 //!
 //! # 稳健性
 //!
 //! - `try_inv` / `solve` 以行列式为零、NaN 或无穷判定不可逆，返回 `Option`；
-//! - [`Mat3C::adjugate`] 提供"差一个标量因子的逆"，是射影几何中处理
-//!   退化 / 尺度无关量的关键（如退化圆锥曲线的对偶）；
+//! - [`Mat3C::adjugate`] 对奇异矩阵也有定义，提供"差一个标量因子的逆"；
 //! - Frobenius 范数用 `hypot` 累积，避免平方和溢出。
 //!
 //! 编译器会对 3×3 的小循环自动向量化，无需手工 SIMD。
@@ -26,6 +32,8 @@ use std::ops::{
 };
 
 use super::Complex;
+use super::cov3c::Cov3C;
+use super::vec3c::Vec3C;
 
 /// 3×3 复矩阵，行优先存储（`m[row][col]`）。
 ///
@@ -56,15 +64,23 @@ impl Mat3C {
         Mat3C { m }
     }
 
-    /// 按列构造：`from_cols(c0, c1, c2)`，每列为一个 `[Complex; 3]`。
+    /// 由三个列向量构造（`c0, c1, c2` 依次为第 0/1/2 列）。
     #[inline]
-    pub const fn from_cols(c0: [Complex; 3], c1: [Complex; 3], c2: [Complex; 3]) -> Mat3C {
+    pub const fn from_3vec(c0: Vec3C, c1: Vec3C, c2: Vec3C) -> Mat3C {
         Mat3C {
             m: [
-                [c0[0], c1[0], c2[0]],
-                [c0[1], c1[1], c2[1]],
-                [c0[2], c1[2], c2[2]],
+                [c0.v[0], c1.v[0], c2.v[0]],
+                [c0.v[1], c1.v[1], c2.v[1]],
+                [c0.v[2], c1.v[2], c2.v[2]],
             ],
+        }
+    }
+
+    /// 由三个行向量构造（`r0, r1, r2` 依次为第 0/1/2 行）。
+    #[inline]
+    pub const fn from_3cov(r0: Cov3C, r1: Cov3C, r2: Cov3C) -> Mat3C {
+        Mat3C {
+            m: [r0.v, r1.v, r2.v],
         }
     }
 
@@ -85,22 +101,20 @@ impl Mat3C {
     }
 
     /// 向量 `v` 的叉积矩阵（反对称）：`from_cross(v)·w = v × w`。
-    ///
-    /// 射影几何中用于"两点定直线"：`l = from_cross(p)·q = p × q`。
     #[inline]
-    pub fn from_cross(v: [Complex; 3]) -> Mat3C {
+    pub fn from_cross(v: Vec3C) -> Mat3C {
         Mat3C::new([
-            [Complex::ZERO, -v[2], v[1]],
-            [v[2], Complex::ZERO, -v[0]],
-            [-v[1], v[0], Complex::ZERO],
+            [Complex::ZERO, -v.v[2], v.v[1]],
+            [v.v[2], Complex::ZERO, -v.v[0]],
+            [-v.v[1], v.v[0], Complex::ZERO],
         ])
     }
 
-    /// 外积 `u·vᵀ`（列向量约定）：`from_outer(u, v)·w = u·(v·w)`。
+    /// 外积 `v·c`（列向量 × 行向量）：`m[i][j] = v[i]·c[j]`。
     #[inline]
-    pub fn from_outer(u: [Complex; 3], v: [Complex; 3]) -> Mat3C {
+    pub fn from_outer(v: Vec3C, c: Cov3C) -> Mat3C {
         Mat3C {
-            m: array::from_fn(|r| array::from_fn(|c| u[r] * v[c])),
+            m: array::from_fn(|r| array::from_fn(|k| v.v[r] * c.v[k])),
         }
     }
 
@@ -130,6 +144,30 @@ impl Mat3C {
     #[inline]
     pub fn col(&self, i: usize) -> [Complex; 3] {
         [self.m[0][i], self.m[1][i], self.m[2][i]]
+    }
+
+    /// 取第 `i` 行，作为行向量 `Cov3C`（`0..3`）。
+    #[inline]
+    pub fn row_cov(&self, i: usize) -> Cov3C {
+        Cov3C::new(self.m[i][0], self.m[i][1], self.m[i][2])
+    }
+
+    /// 取第 `i` 列，作为列向量 `Vec3C`（`0..3`）。
+    #[inline]
+    pub fn col_vec(&self, i: usize) -> Vec3C {
+        Vec3C::new(self.m[0][i], self.m[1][i], self.m[2][i])
+    }
+
+    /// 全部三行（`Cov3C`）。
+    #[inline]
+    pub fn rows(&self) -> [Cov3C; 3] {
+        [self.row_cov(0), self.row_cov(1), self.row_cov(2)]
+    }
+
+    /// 全部三列（`Vec3C`）。
+    #[inline]
+    pub fn cols(&self) -> [Vec3C; 3] {
+        [self.col_vec(0), self.col_vec(1), self.col_vec(2)]
     }
 
     /// 主对角线。
@@ -228,28 +266,40 @@ impl Mat3C {
     // 矩阵 × 向量
     // ------------------------------------------------------------------
 
-    /// `self·v`（列向量约定，`v: [Complex; 3]`）。
+    /// `self·v`（列向量）：线性映射 `v ↦ M·v`。
     #[inline]
     #[must_use]
-    pub fn mul_vec(&self, v: [Complex; 3]) -> [Complex; 3] {
+    pub fn mul_vec(&self, v: Vec3C) -> Vec3C {
         let m = &self.m;
-        [
-            m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
-            m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
-            m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
-        ]
+        Vec3C::new(
+            m[0][0] * v.v[0] + m[0][1] * v.v[1] + m[0][2] * v.v[2],
+            m[1][0] * v.v[0] + m[1][1] * v.v[1] + m[1][2] * v.v[2],
+            m[2][0] * v.v[0] + m[2][1] * v.v[1] + m[2][2] * v.v[2],
+        )
     }
 
-    /// `selfᵀ·v`，等价于行向量运算 `v·self`。
+    /// `selfᵀ·v`，等价于行向量运算 `v·self`（`v` 作行向量解释）。
     #[inline]
     #[must_use]
-    pub fn transpose_mul_vec(&self, v: [Complex; 3]) -> [Complex; 3] {
+    pub fn transpose_mul_vec(&self, v: Vec3C) -> Vec3C {
         let m = &self.m;
-        [
-            m[0][0] * v[0] + m[1][0] * v[1] + m[2][0] * v[2],
-            m[0][1] * v[0] + m[1][1] * v[1] + m[2][1] * v[2],
-            m[0][2] * v[0] + m[1][2] * v[1] + m[2][2] * v[2],
-        ]
+        Vec3C::new(
+            m[0][0] * v.v[0] + m[1][0] * v.v[1] + m[2][0] * v.v[2],
+            m[0][1] * v.v[0] + m[1][1] * v.v[1] + m[2][1] * v.v[2],
+            m[0][2] * v.v[0] + m[1][2] * v.v[1] + m[2][2] * v.v[2],
+        )
+    }
+
+    /// `c·self`（行向量左乘）：结果仍为行向量。等价于 `Cov3C::mul_mat`。
+    #[inline]
+    #[must_use]
+    pub fn mul_cov(&self, c: Cov3C) -> Cov3C {
+        let m = &self.m;
+        Cov3C::new(
+            c.v[0] * m[0][0] + c.v[1] * m[1][0] + c.v[2] * m[2][0],
+            c.v[0] * m[0][1] + c.v[1] * m[1][1] + c.v[2] * m[2][1],
+            c.v[0] * m[0][2] + c.v[1] * m[1][2] + c.v[2] * m[2][2],
+        )
     }
 
     // ------------------------------------------------------------------
@@ -337,7 +387,7 @@ impl Mat3C {
 
     /// 伴随矩阵 `adj(self)`：满足 `self·adj(self) = det(self)·I`。
     ///
-    /// 射影几何中即"差一个标量因子的逆"，对奇异矩阵仍有意义。
+    /// 对奇异矩阵也有定义，提供"差一个标量因子的逆"。
     #[inline]
     #[must_use]
     pub fn adjugate(&self) -> Mat3C {
@@ -370,13 +420,13 @@ impl Mat3C {
     /// 不可逆时返回 `None`。
     #[inline]
     #[must_use]
-    pub fn solve(&self, b: [Complex; 3]) -> Option<[Complex; 3]> {
+    pub fn solve(&self, b: Vec3C) -> Option<Vec3C> {
         let det = self.det();
         if det == Complex::ZERO || !det.is_finite() {
             return None;
         }
         let x = self.adjugate().mul_vec(b);
-        Some([x[0] / det, x[1] / det, x[2] / det])
+        Some(Vec3C::new(x.v[0] / det, x.v[1] / det, x.v[2] / det))
     }
 
     // ------------------------------------------------------------------
@@ -479,9 +529,9 @@ impl Mat3C {
 
 impl fmt::Display for Mat3C {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Mat3C-----\n[{}, {}, {}]", self.m[0][0], self.m[0][1], self.m[0][2])?;
+        writeln!(f, "[{}, {}, {}]", self.m[0][0], self.m[0][1], self.m[0][2])?;
         writeln!(f, "[{}, {}, {}]", self.m[1][0], self.m[1][1], self.m[1][2])?;
-        write!(f, "[{}, {}, {}]\n----------", self.m[2][0], self.m[2][1], self.m[2][2])
+        write!(f, "[{}, {}, {}]", self.m[2][0], self.m[2][1], self.m[2][2])
     }
 }
 
@@ -571,11 +621,12 @@ impl MulAssign for Mat3C {
 // 运算符重载：矩阵 × 向量
 // ---------------------------------------------------------------------------
 
-impl Mul<[Complex; 3]> for Mat3C {
-    type Output = [Complex; 3];
+/// `Mat3C * Vec3C → Vec3C`：线性映射作用。
+impl Mul<Vec3C> for Mat3C {
+    type Output = Vec3C;
     #[inline]
-    fn mul(self, rhs: [Complex; 3]) -> [Complex; 3] {
-        self.mul_vec(rhs)
+    fn mul(self, rhs: Vec3C) -> Vec3C {
+        Mat3C::mul_vec(&self, rhs)
     }
 }
 
@@ -587,7 +638,7 @@ impl Mul<f64> for Mat3C {
     type Output = Mat3C;
     #[inline]
     fn mul(self, rhs: f64) -> Mat3C {
-        self.mul_f64(rhs)
+        Mat3C::mul_f64(&self, rhs)
     }
 }
 
@@ -595,7 +646,7 @@ impl Mul<Mat3C> for f64 {
     type Output = Mat3C;
     #[inline]
     fn mul(self, rhs: Mat3C) -> Mat3C {
-        rhs.mul_f64(self)
+        Mat3C::mul_f64(&rhs, self)
     }
 }
 
@@ -603,7 +654,7 @@ impl Div<f64> for Mat3C {
     type Output = Mat3C;
     #[inline]
     fn div(self, rhs: f64) -> Mat3C {
-        self.div_f64(rhs)
+        Mat3C::div_f64(&self, rhs)
     }
 }
 
@@ -611,7 +662,7 @@ impl Mul<Complex> for Mat3C {
     type Output = Mat3C;
     #[inline]
     fn mul(self, rhs: Complex) -> Mat3C {
-        self.mul_complex(rhs)
+        Mat3C::mul_complex(&self, rhs)
     }
 }
 
@@ -619,7 +670,7 @@ impl Mul<Mat3C> for Complex {
     type Output = Mat3C;
     #[inline]
     fn mul(self, rhs: Mat3C) -> Mat3C {
-        rhs.mul_complex(self)
+        Mat3C::mul_complex(&rhs, self)
     }
 }
 
@@ -627,35 +678,35 @@ impl Div<Complex> for Mat3C {
     type Output = Mat3C;
     #[inline]
     fn div(self, rhs: Complex) -> Mat3C {
-        self.div_complex(rhs)
+        Mat3C::div_complex(&self, rhs)
     }
 }
 
 impl MulAssign<f64> for Mat3C {
     #[inline]
     fn mul_assign(&mut self, rhs: f64) {
-        *self = self.mul_f64(rhs);
+        *self = Mat3C::mul_f64(self, rhs);
     }
 }
 
 impl MulAssign<Complex> for Mat3C {
     #[inline]
     fn mul_assign(&mut self, rhs: Complex) {
-        *self = self.mul_complex(rhs);
+        *self = Mat3C::mul_complex(self, rhs);
     }
 }
 
 impl DivAssign<f64> for Mat3C {
     #[inline]
     fn div_assign(&mut self, rhs: f64) {
-        *self = self.div_f64(rhs);
+        *self = Mat3C::div_f64(self, rhs);
     }
 }
 
 impl DivAssign<Complex> for Mat3C {
     #[inline]
     fn div_assign(&mut self, rhs: Complex) {
-        *self = self.div_complex(rhs);
+        *self = Mat3C::div_complex(self, rhs);
     }
 }
 
@@ -665,7 +716,7 @@ impl DivAssign<Complex> for Mat3C {
 
 #[cfg(test)]
 mod tests {
-    use super::Mat3C;
+    use super::{Cov3C, Mat3C, Vec3C};
     use crate::pakoo_forest::calc::Complex;
 
     const EPS: f64 = 1e-12;
@@ -709,15 +760,12 @@ mod tests {
         );
     }
 
-    fn assert_vec_approx(a: [Complex; 3], b: [Complex; 3]) {
-        for i in 0..3 {
-            assert!(
-                a[i].approx_eq(b[i], EPS),
-                "向量分量 {i} 近似断言失败：{} ≈ {}",
-                a[i],
-                b[i]
-            );
-        }
+    fn assert_vec_approx(a: Vec3C, b: Vec3C) {
+        assert!(a.approx_eq(b, EPS), "向量近似断言失败：{a} ≈ {b}");
+    }
+
+    fn assert_cov_approx(a: Cov3C, b: Cov3C) {
+        assert!(a.approx_eq(b, EPS), "行向量近似断言失败：{a} ≈ {b}");
     }
 
     // ---- 构造与访问 ----
@@ -730,20 +778,22 @@ mod tests {
         assert_eq!(m.row(0), [c(1.0, 0.0), c(2.0, 0.0), c(3.0, 0.0)]);
         assert_eq!(m.col(1), [c(2.0, 0.0), c(5.0, 0.0), c(8.0, 0.0)]);
         assert_eq!(m.diag(), [c(1.0, 0.0), c(5.0, 0.0), c(10.0, 0.0)]);
+        // 类型化提取
+        assert_eq!(m.col_vec(1), Vec3C::from_f64s(2.0, 5.0, 8.0));
+        assert_eq!(m.row_cov(0), Cov3C::from_f64s(1.0, 2.0, 3.0));
+        assert_eq!(m.cols()[2], Vec3C::from_f64s(3.0, 6.0, 10.0));
+        assert_eq!(m.rows()[2], Cov3C::from_f64s(7.0, 8.0, 10.0));
+        // 构造往返：from_3vec / from_3cov
+        let cols = m.cols();
+        assert_eq!(Mat3C::from_3vec(cols[0], cols[1], cols[2]), m);
+        let rows = m.rows();
+        assert_eq!(Mat3C::from_3cov(rows[0], rows[1], rows[2]), m);
 
         let mut n = m;
         n.set(0, 0, c(9.0, 9.0));
         assert_eq!(n.get(0, 0), c(9.0, 9.0));
         n[(2, 1)] = c(8.0, 0.0);
         assert_eq!(n.get(2, 1), c(8.0, 0.0));
-
-        let cols = Mat3C::from_cols(
-            [c(1.0, 0.0), c(2.0, 0.0), c(3.0, 0.0)],
-            [c(4.0, 0.0), c(5.0, 0.0), c(6.0, 0.0)],
-            [c(7.0, 0.0), c(8.0, 0.0), c(9.0, 0.0)],
-        );
-        assert_eq!(cols.m[0], [c(1.0, 0.0), c(4.0, 0.0), c(7.0, 0.0)]);
-        assert_eq!(cols.m[1][0], c(2.0, 0.0));
 
         let d = Mat3C::from_diag([c(1.0, 0.0), c(2.0, 0.0), c(3.0, 0.0)]);
         assert!(d.is_diagonal());
@@ -763,8 +813,10 @@ mod tests {
         assert_eq!(Mat3C::IDENTITY.mul(&mat_a()), mat_a());
         assert_eq!(mat_a().mul(&Mat3C::IDENTITY), mat_a());
         assert_eq!(mat_a().add(&Mat3C::ZERO), mat_a());
-        let v = [c(2.0, 1.0), c(-3.0, 0.0), c(0.0, 4.0)];
+        let v = Vec3C::new(c(2.0, 1.0), c(-3.0, 0.0), c(0.0, 4.0));
         assert_eq!(Mat3C::IDENTITY.mul_vec(v), v);
+        let cov = Cov3C::new(c(2.0, 1.0), c(-3.0, 0.0), c(0.0, 4.0));
+        assert_eq!(Mat3C::IDENTITY.mul_cov(cov), cov);
     }
 
     // ---- 加减 / 取负 ----
@@ -848,11 +900,8 @@ mod tests {
         assert_eq!(a * Complex::I, a.mul_complex(Complex::I));
         assert_eq!(a.div_complex(c(2.0, 0.0)), a.mul_f64(0.5));
         // (s·A)·v == s·(A·v)
-        let v = [c(1.0, 0.0), c(2.0, 0.0), c(3.0, 0.0)];
-        assert_vec_approx(
-            a.mul_f64(3.0).mul_vec(v),
-            a.mul_vec(v).map(|z| z.mul_f64(3.0)),
-        );
+        let v = Vec3C::from_f64s(1.0, 2.0, 3.0);
+        assert_vec_approx(a.mul_f64(3.0).mul_vec(v), a.mul_vec(v).mul_f64(3.0));
     }
 
     #[test]
@@ -881,8 +930,8 @@ mod tests {
     #[test]
     fn mul_vec() {
         let d = Mat3C::from_diag([c(1.0, 0.0), c(2.0, 0.0), c(3.0, 0.0)]);
-        let v = [c(4.0, 0.0), c(5.0, 0.0), c(6.0, 0.0)];
-        assert_eq!(d.mul_vec(v), [c(4.0, 0.0), c(10.0, 0.0), c(18.0, 0.0)]);
+        let v = Vec3C::from_f64s(4.0, 5.0, 6.0);
+        assert_eq!(d.mul_vec(v), Vec3C::from_f64s(4.0, 10.0, 18.0));
         assert_eq!(d * v, d.mul_vec(v)); // 运算符一致
         // 旋转：R(θ)·[1,0,1] = [cosθ, sinθ, 1]
         let (s, co) = 0.3f64.sin_cos();
@@ -892,15 +941,20 @@ mod tests {
             [c(0.0, 0.0), c(0.0, 0.0), c(1.0, 0.0)],
         ]);
         assert_vec_approx(
-            r.mul_vec([c(1.0, 0.0), c(0.0, 0.0), c(1.0, 0.0)]),
-            [c(co, 0.0), c(s, 0.0), c(1.0, 0.0)],
+            r.mul_vec(Vec3C::from_f64s(1.0, 0.0, 1.0)),
+            Vec3C::from_f64s(co, s, 1.0),
         );
         // 转置乘 == 先转置再乘
         assert_vec_approx(
-            r.transpose_mul_vec([c(1.0, 0.0), c(0.0, 0.0), c(0.0, 0.0)]),
-            r.transpose()
-                .mul_vec([c(1.0, 0.0), c(0.0, 0.0), c(0.0, 0.0)]),
+            r.transpose_mul_vec(Vec3C::E0),
+            r.transpose().mul_vec(Vec3C::E0),
         );
+        // 行向量左乘：c·M（E0·M = M 的第 0 行）
+        assert_cov_approx(
+            d.mul_cov(Cov3C::from_f64s(0.0, 1.0, 0.0)),
+            Cov3C::from_f64s(0.0, 2.0, 0.0),
+        );
+        assert_cov_approx(r.mul_cov(Cov3C::E0), r.row_cov(0));
     }
 
     // ---- 行列式 ----
@@ -1041,48 +1095,41 @@ mod tests {
     fn solve_linear() {
         let d = Mat3C::from_diag([c(2.0, 0.0), c(4.0, 0.0), c(8.0, 0.0)]);
         assert_eq!(
-            d.solve([c(2.0, 0.0), c(4.0, 0.0), c(8.0, 0.0)]),
-            Some([c(1.0, 0.0), c(1.0, 0.0), c(1.0, 0.0)])
+            d.solve(Vec3C::from_f64s(2.0, 4.0, 8.0)),
+            Some(Vec3C::from_f64s(1.0, 1.0, 1.0))
         );
         // 复系数往返：A·x = b ⇒ solve(b) = x
         let m = mat_m();
-        let x = [c(1.0, 1.0), c(2.0, -1.0), c(3.0, 0.0)];
+        let x = Vec3C::new(c(1.0, 1.0), c(2.0, -1.0), c(3.0, 0.0));
         let b = m.mul_vec(x);
         assert_vec_approx(m.solve(b).unwrap(), x);
         // 奇异 → None
-        assert_eq!(
-            Mat3C::ZERO.solve([c(1.0, 0.0), c(0.0, 0.0), c(0.0, 0.0)]),
-            None
-        );
-        assert_eq!(mat_n().solve([c(0.0, 0.0), c(0.0, 0.0), c(1.0, 0.0)]), None);
+        assert_eq!(Mat3C::ZERO.solve(Vec3C::from_f64s(1.0, 0.0, 0.0)), None);
+        assert_eq!(mat_n().solve(Vec3C::from_f64s(0.0, 0.0, 1.0)), None);
     }
 
     // ---- 叉积矩阵 / 外积 ----
 
     #[test]
     fn cross_outer() {
-        let v = [c(1.0, 0.0), c(2.0, 0.0), c(3.0, 0.0)];
-        let w = [c(4.0, 0.0), c(5.0, 0.0), c(6.0, 0.0)];
+        let v = Vec3C::from_f64s(1.0, 2.0, 3.0);
+        let w = Vec3C::from_f64s(4.0, 5.0, 6.0);
         let cx = Mat3C::from_cross(v);
         // v × w = [2·6−3·5, 3·4−1·6, 1·5−2·4] = [−3, 6, −3]
-        assert_eq!(cx.mul_vec(w), [c(-3.0, 0.0), c(6.0, 0.0), c(-3.0, 0.0)]);
-        // v × v = 0
-        assert_eq!(cx.mul_vec(v), [Complex::ZERO; 3]);
-        // 反对称
-        assert_eq!(cx.transpose(), cx.neg());
-        // 外积 (u·vᵀ)·w = u·(v·w)
-        let u = [c(1.0, 0.0), c(2.0, 0.0), c(3.0, 0.0)];
-        let v2 = [c(4.0, 0.0), c(5.0, 0.0), c(6.0, 0.0)];
-        let w2 = [c(1.0, 0.0), c(-1.0, 0.0), c(2.0, 0.0)];
-        let outer = Mat3C::from_outer(u, v2);
+        assert_eq!(cx.mul_vec(w), Vec3C::from_f64s(-3.0, 6.0, -3.0));
+        assert_eq!(cx.mul_vec(v), Vec3C::ZERO); // v × v = 0
+        assert_eq!(cx.transpose(), cx.neg()); // 反对称
+        assert_eq!(v.cross(w), cx.mul_vec(w)); // 与 Vec3C::cross 一致
+        // 外积：(v·c)·w = v·(c·w)
+        let u = Vec3C::from_f64s(1.0, 2.0, 3.0);
+        let cov = Cov3C::from_f64s(4.0, 5.0, 6.0);
+        let w2 = Vec3C::from_f64s(1.0, -1.0, 2.0);
+        let outer = Mat3C::from_outer(u, cov);
         assert_eq!(outer.get(0, 0), c(4.0, 0.0));
         assert_eq!(outer.get(0, 1), c(5.0, 0.0));
         assert_eq!(outer.get(1, 2), c(12.0, 0.0));
-        // v2·w2 = 4−5+12 = 11 → u·11
-        assert_eq!(
-            outer.mul_vec(w2),
-            [c(11.0, 0.0), c(22.0, 0.0), c(33.0, 0.0)]
-        );
+        // cov·w2 = 4−5+12 = 11 → u·11
+        assert_eq!(outer.mul_vec(w2), u.mul_complex(cov.dot(w2)));
     }
 
     // ---- 谓词 ----

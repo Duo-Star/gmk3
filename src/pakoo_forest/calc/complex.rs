@@ -1,3 +1,4 @@
+// src/pakoo_forest/calc/complex.rs
 //! 复数 `Complex` —— gmk3 数值内核的基础标量类型。
 //!
 //! # 设计要点
@@ -36,8 +37,10 @@ impl Complex {
     pub const ZERO: Complex = Complex::new(0.0, 0.0);
     /// `1 + 0i`
     pub const ONE: Complex = Complex::new(1.0, 0.0);
+    pub const NEG_ONE: Complex = Complex::new(-1.0, 0.0);
     /// `i`
     pub const I: Complex = Complex::new(0.0, 1.0);
+    pub const NEG_I: Complex = Complex::new(0.0, -1.0);
 
     // ------------------------------------------------------------------
     // 构造与分解
