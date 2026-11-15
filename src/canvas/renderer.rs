@@ -1,10 +1,11 @@
 use crate::canvas::camera::{
     CanvasUniforms, ConicInstance, LineVertex, PointInstance, PreparedDrawData,
 };
-use eframe::egui_wgpu::{CallbackResources, CallbackTrait, ScreenDescriptor};
-use wgpu::util::DeviceExt;
+use eframe::egui_wgpu::{self, CallbackResources, CallbackTrait, ScreenDescriptor};
 
 use egui::PaintCallbackInfo;
+
+use wgpu::util::DeviceExt;
 
 struct DynamicGpuBuffer {
     buffer: wgpu::Buffer,
@@ -75,8 +76,7 @@ impl CanvasGpuResources {
 
         let init_uniforms = CanvasUniforms {
             viewport_px: [800.0, 600.0],
-            line_half_width_px: 0.85,
-            point_radius_px: 3.5,
+            _pad: [0.0, 0.0],
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("gmk3_canvas_uniforms"),
@@ -140,6 +140,16 @@ impl CanvasGpuResources {
                         offset: 8,
                         shader_location: 1,
                     },
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32,
+                        offset: 12,
+                        shader_location: 2,
+                    },
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32x4,
+                        offset: 16,
+                        shader_location: 3,
+                    },
                 ],
             })],
             color_target.clone(),
@@ -166,6 +176,16 @@ impl CanvasGpuResources {
                         offset: 12,
                         shader_location: 1,
                     },
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32,
+                        offset: 24,
+                        shader_location: 2,
+                    },
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32x4,
+                        offset: 28,
+                        shader_location: 3,
+                    },
                 ],
             })],
             color_target.clone(),
@@ -181,11 +201,23 @@ impl CanvasGpuResources {
             &[Some(wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<PointInstance>() as wgpu::BufferAddress,
                 step_mode: wgpu::VertexStepMode::Instance,
-                attributes: &[wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x2,
-                    offset: 0,
-                    shader_location: 0,
-                }],
+                attributes: &[
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32x2,
+                        offset: 0,
+                        shader_location: 0,
+                    },
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32,
+                        offset: 8,
+                        shader_location: 1,
+                    },
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32x4,
+                        offset: 12,
+                        shader_location: 2,
+                    },
+                ],
             })],
             color_target,
         );
@@ -268,25 +300,16 @@ impl CallbackTrait for CanvasCallback {
         queue.write_buffer(&res.uniform_buffer, 0, bytemuck::bytes_of(&self.data.uniforms));
 
         res.line_vertex_count = self.data.line_vertices.len() as u32;
-        res.line_vbo.write(
-            device,
-            queue,
-            bytemuck::cast_slice(&self.data.line_vertices),
-        );
+        res.line_vbo
+            .write(device, queue, bytemuck::cast_slice(&self.data.line_vertices));
 
         res.conic_instance_count = self.data.conic_instances.len() as u32;
-        res.conic_ibo.write(
-            device,
-            queue,
-            bytemuck::cast_slice(&self.data.conic_instances),
-        );
+        res.conic_ibo
+            .write(device, queue, bytemuck::cast_slice(&self.data.conic_instances));
 
         res.point_instance_count = self.data.point_instances.len() as u32;
-        res.point_ibo.write(
-            device,
-            queue,
-            bytemuck::cast_slice(&self.data.point_instances),
-        );
+        res.point_ibo
+            .write(device, queue, bytemuck::cast_slice(&self.data.point_instances));
 
         Vec::new()
     }
@@ -301,7 +324,6 @@ impl CallbackTrait for CanvasCallback {
             return;
         };
 
-        // 1. 圆锥曲线
         if res.conic_instance_count > 0 {
             render_pass.set_pipeline(&res.conic_pipeline);
             render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);
@@ -309,7 +331,6 @@ impl CallbackTrait for CanvasCallback {
             render_pass.draw(0..6, 0..res.conic_instance_count);
         }
 
-        // 2. 直线（截断并挤出的矩形）
         if res.line_vertex_count > 0 {
             render_pass.set_pipeline(&res.line_pipeline);
             render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);
@@ -317,7 +338,6 @@ impl CallbackTrait for CanvasCallback {
             render_pass.draw(0..res.line_vertex_count, 0..1);
         }
 
-        // 3. 点（最后画在最上层）
         if res.point_instance_count > 0 {
             render_pass.set_pipeline(&res.point_pipeline);
             render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);

@@ -1,5 +1,7 @@
 use eframe::egui;
-use gmk3::app::Gmk3App; // 若 Cargo.toml 中 package.name 不是 gmk3，请改为对应包名
+use gmk3::app::Gmk3App;
+use gmk3::canvas::plotter::Plotter;
+use gmk3::pakoo_forest::geo::{Conic, Dot};
 
 // 桌面端原生入口
 #[cfg(not(target_arch = "wasm32"))]
@@ -15,7 +17,24 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "gmk3",
         options,
-        Box::new(|cc| Ok(Box::new(Gmk3App::new(cc)))),
+        Box::new(|cc| {
+            Ok(Box::new(Gmk3App::new(cc, |p: &mut Plotter| {
+                let t = p.t();
+
+                // 在这里用你的 Dot / Line / Conic 命令式构造并提交，例如：
+                let c = Conic::UNIT_CIRCLE;
+                let d = Dot::from_f64s(t.cos()-1.0, t.sin(), 1.0);
+                let l = c.polar(&d);
+
+                p.draw_conic(c);
+                p.draw_line(l);
+                p.draw_dot(d);
+
+                // 也可以直接利用 t 修改视角射影矩阵：
+                // p.camera_mut().proj_matrix.m[2][0] = 0.15 * t.sin();
+                let _ = t;
+            })))
+        }),
     )
 }
 

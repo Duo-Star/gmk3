@@ -19,3 +19,7 @@
 
 pub mod calc;
 pub mod geo;
+
+use geo::Conic;
+use geo::Dot;
+use geo::Line;

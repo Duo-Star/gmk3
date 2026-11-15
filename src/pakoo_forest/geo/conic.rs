@@ -115,6 +115,15 @@ impl Conic {
         self.q
     }
 
+    /// [[A, B, D], [B, C, E], [D, E, F]]
+    pub const fn to_3x3f64(self) -> [[f64; 3]; 3] {
+        [
+             [ self.q.m[0][0].re,  self.q.m[0][1].re,  self.q.m[0][2].re],
+             [ self.q.m[1][0].re,  self.q.m[1][1].re,  self.q.m[1][2].re],
+             [ self.q.m[2][0].re,  self.q.m[2][1].re,  self.q.m[2][2].re],
+         ]
+    }
+
     /// 系数 `A`。
     #[inline]
     pub fn a(&self) -> Complex {

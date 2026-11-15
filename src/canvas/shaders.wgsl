@@ -1,23 +1,26 @@
 struct CanvasUniforms {
     viewport_px: vec2<f32>,
-    line_half_width_px: f32,
-    point_radius_px: f32,
+    _pad: vec2<f32>,
 };
 
 @group(0) @binding(0)
 var<uniform> u: CanvasUniforms;
 
 // ------------------------------------------------------------------
-// 1. 直线（CPU NDC 截断 + 法线挤出矩形）
+// 1. 直线（NDC 截断 + 法线挤出矩形）
 // ------------------------------------------------------------------
 struct LineVertexIn {
     @location(0) pos_ndc: vec2<f32>,
     @location(1) edge_dist_px: f32,
+    @location(2) half_width_px: f32,
+    @location(3) color: vec4<f32>,
 };
 
 struct LineVertexOut {
     @builtin(position) clip_pos: vec4<f32>,
     @location(0) edge_dist_px: f32,
+    @location(1) half_width_px: f32,
+    @location(2) color: vec4<f32>,
 };
 
 @vertex
@@ -25,18 +28,20 @@ fn vs_line(in: LineVertexIn) -> LineVertexOut {
     var out: LineVertexOut;
     out.clip_pos = vec4<f32>(in.pos_ndc, 0.0, 1.0);
     out.edge_dist_px = in.edge_dist_px;
+    out.half_width_px = in.half_width_px;
+    out.color = in.color;
     return out;
 }
 
 @fragment
 fn fs_line(in: LineVertexOut) -> @location(0) vec4<f32> {
     let d = abs(in.edge_dist_px);
-    let hw = u.line_half_width_px;
+    let hw = in.half_width_px;
     let alpha = 1.0 - smoothstep(max(hw - 0.75, 0.0), hw + 0.75, d);
     if (alpha <= 0.001) {
         discard;
     }
-    return vec4<f32>(1.0, 1.0, 1.0, alpha);
+    return vec4<f32>(in.color.rgb, in.color.a * alpha);
 }
 
 // ------------------------------------------------------------------
@@ -45,6 +50,8 @@ fn fs_line(in: LineVertexOut) -> @location(0) vec4<f32> {
 struct ConicInstanceIn {
     @location(0) quad_abc: vec3<f32>,
     @location(1) quad_def: vec3<f32>,
+    @location(2) half_width_px: f32,
+    @location(3) color: vec4<f32>,
 };
 
 struct ConicVertexOut {
@@ -52,6 +59,8 @@ struct ConicVertexOut {
     @location(0) ndc: vec2<f32>,
     @location(1) quad_abc: vec3<f32>,
     @location(2) quad_def: vec3<f32>,
+    @location(3) half_width_px: f32,
+    @location(4) color: vec4<f32>,
 };
 
 @vertex
@@ -71,6 +80,8 @@ fn vs_conic(@builtin(vertex_index) vid: u32, inst: ConicInstanceIn) -> ConicVert
     out.ndc = ndc;
     out.quad_abc = inst.quad_abc;
     out.quad_def = inst.quad_def;
+    out.half_width_px = inst.half_width_px;
+    out.color = inst.color;
     return out;
 }
 
@@ -95,12 +106,12 @@ fn fs_conic(in: ConicVertexOut) -> @location(0) vec4<f32> {
     );
     let dist_px = abs(val) / max(length(grad_px), 1e-6);
 
-    let hw = u.line_half_width_px;
+    let hw = in.half_width_px;
     let alpha = 1.0 - smoothstep(max(hw - 0.75, 0.0), hw + 0.75, dist_px);
     if (alpha <= 0.001) {
         discard;
     }
-    return vec4<f32>(1.0, 1.0, 1.0, alpha);
+    return vec4<f32>(in.color.rgb, in.color.a * alpha);
 }
 
 // ------------------------------------------------------------------
@@ -108,11 +119,15 @@ fn fs_conic(in: ConicVertexOut) -> @location(0) vec4<f32> {
 // ------------------------------------------------------------------
 struct PointInstanceIn {
     @location(0) center_ndc: vec2<f32>,
+    @location(1) radius_px: f32,
+    @location(2) color: vec4<f32>,
 };
 
 struct PointVertexOut {
     @builtin(position) clip_pos: vec4<f32>,
     @location(0) local_px: vec2<f32>,
+    @location(1) radius_px: f32,
+    @location(2) color: vec4<f32>,
 };
 
 @vertex
@@ -125,7 +140,7 @@ fn vs_point(@builtin(vertex_index) vid: u32, inst: PointInstanceIn) -> PointVert
         vec2<f32>( 1.0,  1.0),
         vec2<f32>(-1.0,  1.0),
     );
-    let pad = u.point_radius_px + 1.5;
+    let pad = inst.radius_px + 1.5;
     let local_px = offsets[vid] * pad;
     let offset_ndc = vec2<f32>(
         local_px.x * (2.0 / max(u.viewport_px.x, 1.0)),
@@ -135,16 +150,18 @@ fn vs_point(@builtin(vertex_index) vid: u32, inst: PointInstanceIn) -> PointVert
     var out: PointVertexOut;
     out.clip_pos = vec4<f32>(inst.center_ndc + offset_ndc, 0.0, 1.0);
     out.local_px = local_px;
+    out.radius_px = inst.radius_px;
+    out.color = inst.color;
     return out;
 }
 
 @fragment
 fn fs_point(in: PointVertexOut) -> @location(0) vec4<f32> {
     let dist = length(in.local_px);
-    let r = u.point_radius_px;
+    let r = in.radius_px;
     let alpha = 1.0 - smoothstep(max(r - 0.75, 0.0), r + 0.75, dist);
     if (alpha <= 0.001) {
         discard;
     }
-    return vec4<f32>(1.0, 1.0, 1.0, alpha);
+    return vec4<f32>(in.color.rgb, in.color.a * alpha);
 }
