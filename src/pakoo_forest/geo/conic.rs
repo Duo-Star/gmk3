@@ -37,7 +37,7 @@
 
 use std::fmt;
 
-use crate::pakoo_forest::calc::{Complex, Mat3C};
+use crate::pakoo_forest::calc::{Complex, Mat3C, Vec3C};
 use crate::pakoo_forest::geo::dot::Dot;
 use crate::pakoo_forest::geo::line::Line;
 
@@ -203,6 +203,41 @@ impl Conic {
         Conic {
             q: self.q.adjugate(),
         }
+    }
+
+    /// 直线与圆锥曲线的两个交点（复射影点，计重数）。
+    ///
+    /// 在直线上取两点 `P, R`，参数化 `X(u:v) = u·P + v·R`，
+    /// 代入 `XᵀQX = A·u² + 2B·uv + C·v² = 0`，解参数 `(u:v)` 后回到 `X`。
+    ///
+    /// 不处理退化情形（直线包含于曲线、限制后恒零、`A` 为零等）。
+    #[must_use]
+    pub fn intersect_line(&self, l: &Line) -> [Dot; 2] {
+        let (a, b, c) = (l.x(), l.y(), l.z());
+
+        // 直线 ax+by+cz=0 上的两点：
+        //   P = (-b, a, 0)，R = (-c, 0, a)
+        let p = Dot {
+            p: Vec3C::new(-b, a, Complex::ZERO),
+        };
+        let r = Dot {
+            p: Vec3C::new(-c, Complex::ZERO, a),
+        };
+
+        // 限制到直线的二次型系数
+        let qp = self.q.mul_vec(p.p);
+        let qr = self.q.mul_vec(r.p);
+        let aa = p.p.dot(qp.transpose()); // Pᵀ Q P
+        let bb = p.p.dot(qr.transpose()); // Pᵀ Q R
+        let cc = r.p.dot(qr.transpose()); // Rᵀ Q R
+
+        // A·u² + 2B·uv + C·v² = 0 的两个参数根：
+        //   (u:v) = (-B ± √(B² − A·C) : A)
+        let s = (bb * bb - aa * cc).sqrt();
+        let x1 = p.p.mul_complex(s - bb).add(r.p.mul_complex(aa));
+        let x2 = p.p.mul_complex(-s - bb).add(r.p.mul_complex(aa));
+
+        [Dot { p: x1 }, Dot { p: x2 }]
     }
 
     // ------------------------------------------------------------------

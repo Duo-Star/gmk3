@@ -21,14 +21,16 @@ fn main() -> eframe::Result {
             Ok(Box::new(Gmk3App::new(cc, |p: &mut Plotter| {
                 let t = p.t();
 
-                // 在这里用你的 Dot / Line / Conic 命令式构造并提交，例如：
                 let c = Conic::UNIT_CIRCLE;
                 let d = Dot::from_f64s(t.cos()-1.0, t.sin(), 1.0);
                 let l = c.polar(&d);
+                let dp = c.intersect_line(&l);
 
                 p.draw_conic(c);
                 p.draw_line(l);
                 p.draw_dot(d);
+                p.draw_dot(dp[0]);
+                p.draw_dot(dp[1]);
 
                 // 也可以直接利用 t 修改视角射影矩阵：
                 // p.camera_mut().proj_matrix.m[2][0] = 0.15 * t.sin();

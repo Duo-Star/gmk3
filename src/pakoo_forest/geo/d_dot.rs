@@ -1,5 +1,6 @@
 use crate::pakoo_forest::geo::{Dot, Line};
 
+// 一对点
 struct Ddot {
     p: Dot,
     q: Dot,
@@ -7,7 +8,7 @@ struct Ddot {
 
 impl Ddot {
     #[inline]
-    pub const fn new(p_:Dot, q_:Dot) -> Ddot {
+    pub const fn new(p_: Dot, q_: Dot) -> Ddot {
         Ddot { p: p_, q: q_ }
     }
 
@@ -18,10 +19,4 @@ impl Ddot {
     pub fn line(&self) -> Line {
         Line::from_points(&self.p, &self.q)
     }
-
-
 }
-
-
-
-
