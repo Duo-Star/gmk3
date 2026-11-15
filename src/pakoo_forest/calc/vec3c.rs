@@ -24,7 +24,7 @@ use std::ops::{
 
 use super::Complex;
 use super::cov3c::Cov3C;
-use super::matrix3c::Mat3C;
+use super::mat3c::Mat3C;
 
 /// 3 分量复列向量，分量公开（`v[0..3]`）。
 ///

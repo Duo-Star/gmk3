@@ -3,3 +3,5 @@
 //! 数学内核位于 [`pakoo_forest`]。
 
 pub mod pakoo_forest;
+pub mod app;
+pub mod canvas;

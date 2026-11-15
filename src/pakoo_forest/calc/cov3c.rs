@@ -22,7 +22,7 @@ use std::ops::{
 };
 
 use super::Complex;
-use super::matrix3c::Mat3C;
+use super::mat3c::Mat3C;
 use super::vec3c::Vec3C;
 
 /// 3 分量复行向量，分量公开（`v[0..3]`）。

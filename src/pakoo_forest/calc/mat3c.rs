@@ -1,4 +1,4 @@
-// src/pakoo_forest/calc/matrix3c.rs
+// src/pakoo_forest/calc/mat3c
 //! 3×3 复矩阵 `Mat3C` —— 线性代数内核。
 //!
 //! # 约定

@@ -30,5 +30,6 @@ pub mod line;
 pub mod q_dot;
 pub mod x_line;
 
+pub use conic::Conic;
 pub use dot::Dot;
 pub use line::Line;

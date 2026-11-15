@@ -18,10 +18,11 @@
 
 pub mod complex;
 pub mod cov3c;
-pub mod matrix3c;
+pub mod mat3c;
 pub mod vec3c;
+pub mod mat3f64;
 
 pub use complex::Complex;
 pub use cov3c::Cov3C;
-pub use matrix3c::Mat3C;
+pub use mat3c::Mat3C;
 pub use vec3c::Vec3C;
