@@ -4,91 +4,25 @@ use crate::canvas::camera::{
 };
 
 use crate::pakoo_forest::geo::{conic::Conic, dot::Dot, line::Line};
+use crate::pakoo_forest::geo::d_dot::Ddot;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum DotShape {
-    #[default]
-    Circle,
-    Ring,
-    Cross,
-}
-
-#[derive(Clone, Debug)]
-pub struct DotStyle {
-    pub color: [f32; 4],
-    pub radius_px: f32,
-    pub shape: DotShape,
-    pub label: Option<String>,
-    pub selected: bool,
-    pub visible: bool,
-}
-
-impl Default for DotStyle {
-    fn default() -> Self {
-        Self {
-            color: [1.0, 1.0, 1.0, 1.0],
-            radius_px: 3.5,
-            shape: DotShape::Circle,
-            label: None,
-            selected: false,
-            visible: true,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct LineStyle {
-    pub color: [f32; 4],
-    pub width_px: f32,
-    pub label: Option<String>,
-    pub selected: bool,
-    pub visible: bool,
-}
-
-impl Default for LineStyle {
-    fn default() -> Self {
-        Self {
-            color: [1.0, 1.0, 1.0, 1.0],
-            width_px: 1.7,
-            label: None,
-            selected: false,
-            visible: true,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ConicStyle {
-    pub color: [f32; 4],
-    pub width_px: f32,
-    pub label: Option<String>,
-    pub selected: bool,
-    pub visible: bool,
-}
-
-impl Default for ConicStyle {
-    fn default() -> Self {
-        Self {
-            color: [1.0, 1.0, 1.0, 1.0],
-            width_px: 1.7,
-            label: None,
-            selected: false,
-            visible: true,
-        }
-    }
-}
+use crate::canvas::styles::{DotStyle, LineStyle, ConicStyle, DdotStyle};
 
 /// 命令式几何绘图器：每帧重置缓冲、执行构造更新、打包提交给 wgpu。
 pub struct Plotter {
-    // 1. 三个几何对象主缓冲（保留完整 Dot / Line / Conic 类型）
+    /// 对象主缓冲
+    // 基本
     dots: Vec<Dot>,
     lines: Vec<Line>,
     conics: Vec<Conic>,
+    // 复合
+    d_dots: Vec<Ddot>,
 
-    // 2. 一一对应的三个绘图细节缓冲（索引严格同步）
+    // 对应的三个绘图细节缓冲，索引同步
     dot_styles: Vec<DotStyle>,
     line_styles: Vec<LineStyle>,
     conic_styles: Vec<ConicStyle>,
+    d_dot_styles: Vec<DdotStyle>,
 
     // 3. 视角数据与当前动画时间（秒）
     pub camera: ProjectiveCamera,
@@ -107,9 +41,13 @@ impl Plotter {
             dots: Vec::new(),
             lines: Vec::new(),
             conics: Vec::new(),
+            d_dots: Vec::new(),
+            //
             dot_styles: Vec::new(),
             line_styles: Vec::new(),
             conic_styles: Vec::new(),
+            d_dot_styles: Vec::new(),
+            // 
             camera: ProjectiveCamera::default(),
             time_sec: 0.0,
         }
@@ -162,6 +100,20 @@ impl Plotter {
         let idx = self.dots.len();
         self.dots.push(dot);
         self.dot_styles.push(style);
+        idx
+    }
+
+    #[inline]
+    pub fn draw_d_dot(&mut self, d_dot: Ddot) -> usize {
+        self.draw_dot_with(d_dot.p(), DotStyle::default());
+        self.draw_dot_with(d_dot.q(), DotStyle::default())
+    }
+
+    #[inline]
+    pub fn draw_d_dot_with(&mut self, d_dot: Ddot, style: DdotStyle) -> usize {
+        let idx = self.d_dots.len();
+        self.d_dots.push(d_dot);
+        self.d_dot_styles.push(style);
         idx
     }
 

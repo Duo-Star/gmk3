@@ -1,6 +1,12 @@
 use crate::canvas::plotter::Plotter;
 use crate::canvas::renderer::{CanvasCallback, CanvasGpuResources};
 use eframe::{egui, egui_wgpu};
+
+
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
+
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 pub struct Gmk3App {
@@ -42,19 +48,85 @@ impl Gmk3App {
         }
     }
 }
-
 impl eframe::App for Gmk3App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let t = self.current_t();
-
-        // 1. 上方应用栏（极简）
-        egui::Panel::top("top_bar").show(ui, |ui| {
+        // 1. 上方操作栏（最外层顶部）
+        egui::Panel::top("top_bar")
+            .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label("gmk3");
+                ui.label("操作栏\n111\n111");
+                ui.separator();
+                ui.label("gmk3 2026.11.17 duo");
+                if ui.button("切换主题").clicked() {
+                    // 检查当前的 dark_mode 状态
+                    let is_dark = ui.visuals().dark_mode;
+
+                    if is_dark {
+                        // 切换为亮色模式
+                        ui.ctx().set_visuals(egui::Visuals::light());
+                    } else {
+                        // 切换为暗色模式
+                        ui.ctx().set_visuals(egui::Visuals::dark());
+                    }
+                }
             });
         });
 
-        // 2. 中间画布（上下左右保留 16px 边距，不贴边缘）
+        // 2. 右侧最外层：工具切换栏
+        egui::Panel::right("tool_switch").show(ui, |ui| {
+            ui.vertical_centered(|ui| {
+               // ui.add_space(8.0);
+               // ui.label("工\n具\n切\n换");
+                ui.button("0")
+            });
+        });
+
+        // 3. 右侧内层：属性栏（位于工具切换左侧）
+        egui::Panel::right("properties_panel").show(ui, |ui| {
+            ui.heading("属性栏");
+            // 假设这是你结构体中的一个 3x3 矩阵数据，例如 [[f32; 3]; 3]
+            // matrix: [[f32; 3]; 3]
+
+            let mut value_changed = false;
+
+            ui.label("视角变换矩阵");
+
+            // 使用 egui::Grid 排列 3x3 的输入框
+            egui::Grid::new("matrix_3x3_grid")
+                .spacing([8.0, 8.0]) // 设置网格间距
+                .show(ui, |ui| {
+                    for row in 0..3 {
+                        for col in 0..3 {
+                            // 每个格子使用 DragValue 或 Slider
+                            // 假设你的矩阵字段叫 self.matrix
+                            let response = ui.add(
+                                egui::DragValue::new(&mut self.matrix[row][col])
+                                    .speed(0.01) // 调整拖动灵敏度
+                                    .range(-100.0..=100.0) // 可选：限制范围
+                            );
+
+                            // 检测当前格子数值是否发生改变
+                            if response.changed() {
+                                value_changed = true;
+                            }
+                        }
+                        ui.end_row(); // 换行
+                    }
+                });
+
+            // 当矩阵中任意数值改变时
+            if value_changed {
+
+            }
+        });
+
+        // 4. 左侧：对象列表栏
+        egui::Panel::left("object_list").show(ui, |ui| {
+            ui.heading("对象列表");
+        });
+
+        // 5. 中间画布区域（上下左右保留 16px 边距，不贴边缘）
         egui::CentralPanel::default().show(ui, |ui| {
             let canvas_rect = ui.max_rect().shrink(16.0);
             if canvas_rect.width() <= 2.0 || canvas_rect.height() <= 2.0 {
