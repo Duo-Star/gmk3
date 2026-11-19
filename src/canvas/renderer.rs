@@ -15,7 +15,12 @@ struct DynamicGpuBuffer {
 }
 
 impl DynamicGpuBuffer {
-    fn new(device: &wgpu::Device, label: &'static str, usage: wgpu::BufferUsages, init_bytes: u64) -> Self {
+    fn new(
+        device: &wgpu::Device,
+        label: &'static str,
+        usage: wgpu::BufferUsages,
+        init_bytes: u64,
+    ) -> Self {
         let cap = init_bytes.max(64);
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
@@ -63,6 +68,7 @@ pub struct CanvasGpuResources {
     point_ibo: DynamicGpuBuffer,
 
     line_vertex_count: u32,
+    grid_line_vertex_count: u32,
     conic_instance_count: u32,
     point_instance_count: u32,
 }
@@ -228,10 +234,26 @@ impl CanvasGpuResources {
             line_pipeline,
             conic_pipeline,
             point_pipeline,
-            line_vbo: DynamicGpuBuffer::new(device, "gmk3_line_vbo", wgpu::BufferUsages::VERTEX, 4096),
-            conic_ibo: DynamicGpuBuffer::new(device, "gmk3_conic_ibo", wgpu::BufferUsages::VERTEX, 1024),
-            point_ibo: DynamicGpuBuffer::new(device, "gmk3_point_ibo", wgpu::BufferUsages::VERTEX, 1024),
+            line_vbo: DynamicGpuBuffer::new(
+                device,
+                "gmk3_line_vbo",
+                wgpu::BufferUsages::VERTEX,
+                4096,
+            ),
+            conic_ibo: DynamicGpuBuffer::new(
+                device,
+                "gmk3_conic_ibo",
+                wgpu::BufferUsages::VERTEX,
+                1024,
+            ),
+            point_ibo: DynamicGpuBuffer::new(
+                device,
+                "gmk3_point_ibo",
+                wgpu::BufferUsages::VERTEX,
+                1024,
+            ),
             line_vertex_count: 0,
+            grid_line_vertex_count: 0,
             conic_instance_count: 0,
             point_instance_count: 0,
         }
@@ -297,19 +319,33 @@ impl CallbackTrait for CanvasCallback {
             return Vec::new();
         };
 
-        queue.write_buffer(&res.uniform_buffer, 0, bytemuck::bytes_of(&self.data.uniforms));
+        queue.write_buffer(
+            &res.uniform_buffer,
+            0,
+            bytemuck::bytes_of(&self.data.uniforms),
+        );
 
         res.line_vertex_count = self.data.line_vertices.len() as u32;
-        res.line_vbo
-            .write(device, queue, bytemuck::cast_slice(&self.data.line_vertices));
+        res.grid_line_vertex_count = self.data.grid_vertex_count as u32;
+        res.line_vbo.write(
+            device,
+            queue,
+            bytemuck::cast_slice(&self.data.line_vertices),
+        );
 
         res.conic_instance_count = self.data.conic_instances.len() as u32;
-        res.conic_ibo
-            .write(device, queue, bytemuck::cast_slice(&self.data.conic_instances));
+        res.conic_ibo.write(
+            device,
+            queue,
+            bytemuck::cast_slice(&self.data.conic_instances),
+        );
 
         res.point_instance_count = self.data.point_instances.len() as u32;
-        res.point_ibo
-            .write(device, queue, bytemuck::cast_slice(&self.data.point_instances));
+        res.point_ibo.write(
+            device,
+            queue,
+            bytemuck::cast_slice(&self.data.point_instances),
+        );
 
         Vec::new()
     }
@@ -324,6 +360,15 @@ impl CallbackTrait for CanvasCallback {
             return;
         };
 
+        // 绘制次序（画家算法，底层在前）：
+        // 网格层（网格+坐标轴）→ 圆锥曲线 → 用户直线 → 点
+        if res.grid_line_vertex_count > 0 {
+            render_pass.set_pipeline(&res.line_pipeline);
+            render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, res.line_vbo.buffer.slice(..));
+            render_pass.draw(0..res.grid_line_vertex_count, 0..1);
+        }
+
         if res.conic_instance_count > 0 {
             render_pass.set_pipeline(&res.conic_pipeline);
             render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);
@@ -331,11 +376,11 @@ impl CallbackTrait for CanvasCallback {
             render_pass.draw(0..6, 0..res.conic_instance_count);
         }
 
-        if res.line_vertex_count > 0 {
+        if res.line_vertex_count > res.grid_line_vertex_count {
             render_pass.set_pipeline(&res.line_pipeline);
             render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);
             render_pass.set_vertex_buffer(0, res.line_vbo.buffer.slice(..));
-            render_pass.draw(0..res.line_vertex_count, 0..1);
+            render_pass.draw(res.grid_line_vertex_count..res.line_vertex_count, 0..1);
         }
 
         if res.point_instance_count > 0 {

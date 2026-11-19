@@ -1,17 +1,17 @@
-use eframe::{egui, CreationContext, AppCreator};
+use eframe::{AppCreator, CreationContext, egui};
 use gmk3::app::Gmk3App;
 use gmk3::canvas::plotter::Plotter;
 use gmk3::canvas::styles::DotShape::Circle;
 use gmk3::pakoo_forest::calc::{Complex, Mat3C};
 use gmk3::pakoo_forest::geo::{Conic, Dot, Line};
 
-fn se() ->  AppCreator<'static> {
+fn se() -> AppCreator<'static> {
     Box::new(|cc| {
         Ok(Box::new(Gmk3App::new(cc, |p: &mut Plotter| {
             let t = p.t();
 
-            let c = Conic::from_f64s(1.0,0.0+2.0*t.sin(),1.0,0.0,0.0,-1.0);
-            let d = Dot::from_f64s(t.cos()-1.0, t.sin(), 1.0);
+            let c = Conic::from_f64s(1.0, 0.0, 1.0, 0.0, 0.0, -1.0);
+            let d = Dot::from_f64s(0.0, 0.0, 1.0);
             let l = c.polar(&d);
             let dp = c.intersect_line(&l);
             //let cen = dp.center();
@@ -20,21 +20,23 @@ fn se() ->  AppCreator<'static> {
             p.draw_line(l);
             p.draw_dot(d);
             p.draw_d_dot(dp);
-            //p.draw_dot(cen);
+            // p.draw_dot(cen);
 
             // 也可以直接利用 t 修改视角射影矩阵：
-            // p.camera_mut().proj_matrix.m[2][0] = 0.15 * t.sin();
+            // p.camera_mut().proj_matrix.m[2][0] = 2.0 * t.sin();
+            // p.camera_mut().proj_matrix.m[2][1] = 2.0 * (0.5*t).cos();
             let _ = t;
         })))
     })
 }
 
-
-
 // 桌面端原生入口
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
-    println!("{}", Conic::UNIT_CIRCLE.intersect_line(&Line::from_f64s(1.0, 0.0, -2.0)));
+    // println!(
+    //     "{}",
+    //     Conic::UNIT_CIRCLE.intersect_line(&Line::from_f64s(1.0, 0.0, -2.0))
+    // );
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("gmk3")
@@ -43,11 +45,7 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
-    eframe::run_native(
-        "gmk3",
-        options,
-        se()
-    )
+    eframe::run_native("gmk3", options, se())
 }
 // 网页端 (WebAssembly) 入口
 #[cfg(target_arch = "wasm32")]
@@ -68,18 +66,14 @@ fn main() {
             .expect("没有 document");
 
         let canvas = document
-            .get_element_by_id("pakoo_canvas")           // 与 index.html 中的 canvas id 一致
+            .get_element_by_id("pakoo_canvas") // 与 index.html 中的 canvas id 一致
             .expect("找不到 id 为 the_canvas_id 的 canvas")
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("the_canvas_id 不是一个 HtmlCanvasElement");
 
         // 网页端用 WebRunner::start 代替 run_native
         let start_result = eframe::WebRunner::new()
-            .start(
-                canvas,
-                web_options,
-               se()
-            )
+            .start(canvas, web_options, se())
             .await;
 
         // 移除页面上的加载提示 / 错误显示

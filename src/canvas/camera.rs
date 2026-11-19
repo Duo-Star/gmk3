@@ -6,11 +6,7 @@ pub struct Mat3F64 {
 
 impl Mat3F64 {
     pub const IDENTITY: Self = Self {
-        m: [
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0],
-        ],
+        m: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
     };
 
     #[inline]
@@ -129,8 +125,6 @@ impl ProjectiveCamera {
         let h_inv = h.inverse().unwrap_or(Mat3F64::IDENTITY);
         (h, h_inv)
     }
-
-
 }
 
 /// 将 NDC 齐次直线 a*x + b*y + c = 0 截断到 [-1.02, 1.02]^2
@@ -285,6 +279,9 @@ pub struct PointInstance {
 #[derive(Clone)]
 pub struct PreparedDrawData {
     pub uniforms: CanvasUniforms,
+    /// 底层（网格+坐标轴）顶点数：渲染器据此把直线缓冲拆成两段绘制，
+    /// 次序为 网格层 → 圆锥曲线 → 用户直线 → 点
+    pub grid_vertex_count: usize,
     pub line_vertices: Vec<LineVertex>,
     pub conic_instances: Vec<ConicInstance>,
     pub point_instances: Vec<PointInstance>,

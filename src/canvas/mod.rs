@@ -1,4 +1,4 @@
 pub mod camera;
-pub mod renderer;
 pub mod plotter;
+pub mod renderer;
 pub mod styles;

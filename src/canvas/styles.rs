@@ -1,4 +1,3 @@
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum DotShape {
     #[default]
@@ -29,7 +28,6 @@ impl Default for DotStyle {
         }
     }
 }
-
 
 #[derive(Clone, Debug)]
 pub struct DdotStyle {

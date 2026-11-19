@@ -12,7 +12,11 @@ struct Qdot {
 impl Qdot {
     #[inline]
     pub const fn new(p_: Dot, q_: Dot, m_: Dot, n_: Dot) -> Qdot {
-        Qdot { p: p_, q: q_,m:m_, n:n_ }
+        Qdot {
+            p: p_,
+            q: q_,
+            m: m_,
+            n: n_,
+        }
     }
-
 }

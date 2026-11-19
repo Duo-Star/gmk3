@@ -176,7 +176,6 @@ impl Dot {
         self.p.norm()
     }
 
-
     /// 计算一个点和另一点的中点
     #[inline]
     #[must_use]

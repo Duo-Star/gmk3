@@ -95,7 +95,7 @@ impl Line {
         self.p.v
     }
 
-    /// 实直线 
+    /// 实直线
     pub const fn to_3f64(self) -> [f64; 3] {
         [self.p.v[0].re, self.p.v[1].re, self.p.v[2].re]
     }

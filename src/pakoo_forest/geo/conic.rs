@@ -38,9 +38,9 @@
 use std::fmt;
 
 use crate::pakoo_forest::calc::{Complex, Mat3C, Vec3C};
+use crate::pakoo_forest::geo::d_dot::Ddot;
 use crate::pakoo_forest::geo::dot::Dot;
 use crate::pakoo_forest::geo::line::Line;
-use crate::pakoo_forest::geo::d_dot::Ddot;
 
 /// Schur 补 `S = F − (C·D² − 2·B·D·E + A·E²)/(A·C − B²)`。
 ///
@@ -119,10 +119,10 @@ impl Conic {
     /// [[A, B, D], [B, C, E], [D, E, F]]
     pub const fn to_3x3f64(self) -> [[f64; 3]; 3] {
         [
-             [ self.q.m[0][0].re,  self.q.m[0][1].re,  self.q.m[0][2].re],
-             [ self.q.m[1][0].re,  self.q.m[1][1].re,  self.q.m[1][2].re],
-             [ self.q.m[2][0].re,  self.q.m[2][1].re,  self.q.m[2][2].re],
-         ]
+            [self.q.m[0][0].re, self.q.m[0][1].re, self.q.m[0][2].re],
+            [self.q.m[1][0].re, self.q.m[1][1].re, self.q.m[1][2].re],
+            [self.q.m[2][0].re, self.q.m[2][1].re, self.q.m[2][2].re],
+        ]
     }
 
     /// 系数 `A`。
@@ -205,7 +205,7 @@ impl Conic {
             q: self.q.adjugate(),
         }
     }
-    
+
     #[must_use]
     pub fn intersect_line(&self, l: &Line) -> Ddot {
         let (a, b, c) = (l.x(), l.y(), l.z());
@@ -233,7 +233,7 @@ impl Conic {
         let x2 = p.p.mul_complex(-s - bb).add(r.p.mul_complex(aa));
 
         // [Dot { p: x1 }, Dot { p: x2 }]
-        Ddot::from_vec3cs(x1,x2)
+        Ddot::from_vec3cs(x1, x2)
     }
 
     // ------------------------------------------------------------------
