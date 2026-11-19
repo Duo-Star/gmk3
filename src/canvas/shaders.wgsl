@@ -1,10 +1,116 @@
 struct CanvasUniforms {
     viewport_px: vec2<f32>,
+    show_grid: u32,
+    minor_line_px: f32,
+    grid_inv_col0: vec4<f32>,
+    grid_inv_col1: vec4<f32>,
+    grid_inv_col2: vec4<f32>,
+    grid_minor_color: vec4<f32>,
+    grid_major_color: vec4<f32>,
+    major_line_px: f32,
+    major_every: f32,
     _pad: vec2<f32>,
 };
 
 @group(0) @binding(0)
 var<uniform> u: CanvasUniforms;
+
+// ------------------------------------------------------------------
+// 0. 无限射影网格（全屏 Quad + 解析导数 + 盒式滤波）
+// ------------------------------------------------------------------
+struct GridVertexOut {
+    @builtin(position) clip_pos: vec4<f32>,
+    @location(0) ndc: vec2<f32>,
+};
+
+@vertex
+fn vs_grid(@builtin(vertex_index) vid: u32) -> GridVertexOut {
+    var corners = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 1.0, -1.0),
+        vec2<f32>( 1.0,  1.0),
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 1.0,  1.0),
+        vec2<f32>(-1.0,  1.0),
+    );
+    let ndc = corners[vid];
+    var out: GridVertexOut;
+    out.clip_pos = vec4<f32>(ndc, 0.0, 1.0);
+    out.ndc = ndc;
+    return out;
+}
+
+/// 精确 1D 盒式滤波覆盖率 + Nyquist 渐近均质混合：
+/// - 在正常视口下输出恒定 `line_px` 宽度的无闪烁抗锯齿线；
+/// - 在接近无穷远直线 `w_z -> 0` 时，平滑收敛到周期平均覆盖率 `max_frac`，无摩尔纹与接缝。
+fn eval_grid_coverage(uv: vec2<f32>, uv_deriv: vec2<f32>, line_px: f32, max_frac: f32) -> f32 {
+    // 每像素在格子坐标下的覆盖尺度（乘以 1.15 作为轻微抗锯齿羽化）
+    let fp = max(uv_deriv * 1.15, vec2<f32>(1e-6));
+    let target_w = min(line_px * uv_deriv, vec2<f32>(max_frac));
+
+    let d_uv = abs(fract(uv - 0.5) - 0.5);
+    let hw = 0.5 * target_w;
+    let hp = 0.5 * fp;
+
+    let overlap = max(min(d_uv + hp, hw) - max(d_uv - hp, -hw), vec2<f32>(0.0)) / fp;
+    let nyquist_blend = clamp(uv_deriv * 2.0 - 1.0, vec2<f32>(0.0), vec2<f32>(1.0));
+    let cov = mix(overlap, target_w, nyquist_blend);
+    return clamp(cov.x + cov.y - cov.x * cov.y, 0.0, 1.0);
+}
+
+@fragment
+fn fs_grid(in: GridVertexOut) -> @location(0) vec4<f32> {
+    if (u.show_grid == 0u) {
+        discard;
+    }
+
+    let c0 = u.grid_inv_col0.xyz;
+    let c1 = u.grid_inv_col1.xyz;
+    let c2 = u.grid_inv_col2.xyz;
+
+    let w = c0 * in.ndc.x + c1 * in.ndc.y + c2;
+    let ndc_per_px = 2.0 / max(u.viewport_px, vec2<f32>(1.0));
+    let dw_dx = c0 * ndc_per_px.x;
+    let dw_dy = c1 * ndc_per_px.y;
+
+    let wz = w.z;
+    let wz_safe = select(wz, select(1e-7, -1e-7, wz < 0.0), abs(wz) < 1e-7);
+    let uv = w.xy / wz_safe;
+
+    // 商法则解析导数：跨越 w_z = 0（地平线）时无 2x2 quad 块状伪影且永不归零
+    let inv_wz2 = 1.0 / max(wz * wz, 1e-12);
+    let du_dx = (wz * dw_dx.x - w.x * dw_dx.z) * inv_wz2;
+    let du_dy = (wz * dw_dy.x - w.x * dw_dy.z) * inv_wz2;
+    let dv_dx = (wz * dw_dx.y - w.y * dw_dx.z) * inv_wz2;
+    let dv_dy = (wz * dw_dy.y - w.y * dw_dy.z) * inv_wz2;
+
+    var uv_deriv = vec2<f32>(
+        length(vec2<f32>(du_dx, du_dy)),
+        length(vec2<f32>(dv_dx, dv_dy))
+    );
+
+    // 若像素距离地平线 w_z = 0 不足 1 像素（含灭点 w_x = w_z = 0），强制进入过密均质区
+    let grad_wz_px = length(vec2<f32>(dw_dx.z, dw_dy.z));
+    if (grad_wz_px > 1e-8 && abs(wz) < grad_wz_px) {
+        uv_deriv = max(uv_deriv, vec2<f32>(1.0));
+    }
+
+    let minor_cov = eval_grid_coverage(uv, uv_deriv, u.minor_line_px, 0.085);
+    let major_uv = uv / u.major_every;
+    let major_deriv = uv_deriv / u.major_every;
+    let major_cov = eval_grid_coverage(major_uv, major_deriv, u.major_line_px, 0.05);
+
+    let minor_a = u.grid_minor_color.a * minor_cov;
+    let major_a = u.grid_major_color.a * major_cov;
+    let out_a = major_a + minor_a * (1.0 - major_a);
+    if (out_a <= 0.001) {
+        discard;
+    }
+
+    let out_premul_rgb = u.grid_major_color.rgb * major_a
+        + u.grid_minor_color.rgb * minor_a * (1.0 - major_a);
+    return vec4<f32>(out_premul_rgb / out_a, out_a);
+}
 
 // ------------------------------------------------------------------
 // 1. 直线（NDC 截断 + 法线挤出矩形）

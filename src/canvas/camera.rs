@@ -243,10 +243,21 @@ pub fn extrude_line_quad(
     out.extend_from_slice(&[v0_pos, v1_pos, v0_neg, v0_neg, v1_pos, v1_neg]);
 }
 
+
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CanvasUniforms {
     pub viewport_px: [f32; 2],
+    pub show_grid: u32,
+    pub minor_line_px: f32,
+    /// NDC -> 次网格单位坐标系的 3x3 逆变换矩阵（按列存储，xyz 有效）
+    pub grid_inv_col0: [f32; 4],
+    pub grid_inv_col1: [f32; 4],
+    pub grid_inv_col2: [f32; 4],
+    pub grid_minor_color: [f32; 4],
+    pub grid_major_color: [f32; 4],
+    pub major_line_px: f32,
+    pub major_every: f32,
     pub _pad: [f32; 2],
 }
 
@@ -279,9 +290,8 @@ pub struct PointInstance {
 #[derive(Clone)]
 pub struct PreparedDrawData {
     pub uniforms: CanvasUniforms,
-    /// 底层（网格+坐标轴）顶点数：渲染器据此把直线缓冲拆成两段绘制，
-    /// 次序为 网格层 → 圆锥曲线 → 用户直线 → 点
-    pub grid_vertex_count: usize,
+    /// 坐标轴顶点数（渲染器据此把直线缓冲拆成两段：坐标轴 → 圆锥曲线 → 用户直线 → 点）
+    pub axis_vertex_count: usize,
     pub line_vertices: Vec<LineVertex>,
     pub conic_instances: Vec<ConicInstance>,
     pub point_instances: Vec<PointInstance>,

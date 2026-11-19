@@ -2,9 +2,7 @@ use crate::canvas::camera::{
     CanvasUniforms, ConicInstance, LineVertex, PointInstance, PreparedDrawData,
 };
 use eframe::egui_wgpu::{self, CallbackResources, CallbackTrait, ScreenDescriptor};
-
 use egui::PaintCallbackInfo;
-
 use wgpu::util::DeviceExt;
 
 struct DynamicGpuBuffer {
@@ -59,6 +57,7 @@ pub struct CanvasGpuResources {
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
 
+    grid_pipeline: wgpu::RenderPipeline,
     line_pipeline: wgpu::RenderPipeline,
     conic_pipeline: wgpu::RenderPipeline,
     point_pipeline: wgpu::RenderPipeline,
@@ -67,8 +66,9 @@ pub struct CanvasGpuResources {
     conic_ibo: DynamicGpuBuffer,
     point_ibo: DynamicGpuBuffer,
 
+    show_grid: bool,
     line_vertex_count: u32,
-    grid_line_vertex_count: u32,
+    axis_vertex_count: u32,
     conic_instance_count: u32,
     point_instance_count: u32,
 }
@@ -82,6 +82,15 @@ impl CanvasGpuResources {
 
         let init_uniforms = CanvasUniforms {
             viewport_px: [800.0, 600.0],
+            show_grid: 1,
+            minor_line_px: 1.0,
+            grid_inv_col0: [1.0, 0.0, 0.0, 0.0],
+            grid_inv_col1: [0.0, 1.0, 0.0, 0.0],
+            grid_inv_col2: [0.0, 0.0, 1.0, 0.0],
+            grid_minor_color: [0.16, 0.16, 0.17, 1.0],
+            grid_major_color: [0.30, 0.30, 0.32, 1.0],
+            major_line_px: 1.15,
+            major_every: 5.0,
             _pad: [0.0, 0.0],
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -124,6 +133,17 @@ impl CanvasGpuResources {
             blend: Some(wgpu::BlendState::ALPHA_BLENDING),
             write_mask: wgpu::ColorWrites::ALL,
         });
+
+        let grid_pipeline = create_pipeline(
+            device,
+            "gmk3_grid_pipeline",
+            &pipeline_layout,
+            &shader,
+            "vs_grid",
+            "fs_grid",
+            &[],
+            color_target.clone(),
+        );
 
         let line_pipeline = create_pipeline(
             device,
@@ -231,6 +251,7 @@ impl CanvasGpuResources {
         Self {
             uniform_buffer,
             uniform_bind_group,
+            grid_pipeline,
             line_pipeline,
             conic_pipeline,
             point_pipeline,
@@ -252,8 +273,9 @@ impl CanvasGpuResources {
                 wgpu::BufferUsages::VERTEX,
                 1024,
             ),
+            show_grid: true,
             line_vertex_count: 0,
-            grid_line_vertex_count: 0,
+            axis_vertex_count: 0,
             conic_instance_count: 0,
             point_instance_count: 0,
         }
@@ -325,8 +347,9 @@ impl CallbackTrait for CanvasCallback {
             bytemuck::bytes_of(&self.data.uniforms),
         );
 
+        res.show_grid = self.data.uniforms.show_grid != 0;
         res.line_vertex_count = self.data.line_vertices.len() as u32;
-        res.grid_line_vertex_count = self.data.grid_vertex_count as u32;
+        res.axis_vertex_count = self.data.axis_vertex_count as u32;
         res.line_vbo.write(
             device,
             queue,
@@ -360,15 +383,22 @@ impl CallbackTrait for CanvasCallback {
             return;
         };
 
-        // 绘制次序（画家算法，底层在前）：
-        // 网格层（网格+坐标轴）→ 圆锥曲线 → 用户直线 → 点
-        if res.grid_line_vertex_count > 0 {
+        // 0. 无限射影网格（O(1) 全屏着色器）
+        if res.show_grid {
+            render_pass.set_pipeline(&res.grid_pipeline);
+            render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);
+            render_pass.draw(0..6, 0..1);
+        }
+
+        // 1. 世界坐标轴
+        if res.axis_vertex_count > 0 {
             render_pass.set_pipeline(&res.line_pipeline);
             render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);
             render_pass.set_vertex_buffer(0, res.line_vbo.buffer.slice(..));
-            render_pass.draw(0..res.grid_line_vertex_count, 0..1);
+            render_pass.draw(0..res.axis_vertex_count, 0..1);
         }
 
+        // 2. 圆锥曲线
         if res.conic_instance_count > 0 {
             render_pass.set_pipeline(&res.conic_pipeline);
             render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);
@@ -376,13 +406,15 @@ impl CallbackTrait for CanvasCallback {
             render_pass.draw(0..6, 0..res.conic_instance_count);
         }
 
-        if res.line_vertex_count > res.grid_line_vertex_count {
+        // 3. 用户直线
+        if res.line_vertex_count > res.axis_vertex_count {
             render_pass.set_pipeline(&res.line_pipeline);
             render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);
             render_pass.set_vertex_buffer(0, res.line_vbo.buffer.slice(..));
-            render_pass.draw(res.grid_line_vertex_count..res.line_vertex_count, 0..1);
+            render_pass.draw(res.axis_vertex_count..res.line_vertex_count, 0..1);
         }
 
+        // 4. 点与骈点
         if res.point_instance_count > 0 {
             render_pass.set_pipeline(&res.point_pipeline);
             render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);

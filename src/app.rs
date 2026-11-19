@@ -145,15 +145,15 @@ impl Gmk3App {
         ui.label("显示");
         ui.checkbox(&mut self.plotter.show_grid, "显示网格");
         ui.checkbox(&mut self.plotter.show_axes, "显示坐标轴");
-        if self.plotter.show_grid {
-            ui.add(
-                egui::Slider::new(&mut self.plotter.max_grid_lines, 1024..=65535).text("网格线上限"),
-            );
-            ui.add(
-                egui::Slider::new(&mut self.plotter.grid_extent_margin, 1.0..=65.0)
-                    .text("网格范围边距"),
-            );
-        }
+        // if self.plotter.show_grid {
+        //     ui.add(
+        //         egui::Slider::new(&mut self.plotter.max_grid_lines, 1024..=65535).text("网格线上限"),
+        //     );
+        //     ui.add(
+        //         egui::Slider::new(&mut self.plotter.grid_extent_margin, 1.0..=65.0)
+        //             .text("网格范围边距"),
+        //     );
+        // }
         ui.separator(); // 分割线 -----------------------------------------
 
         // 直接绑定相机状态（借用自己的字段，非拷贝）
