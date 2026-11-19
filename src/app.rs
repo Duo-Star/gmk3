@@ -1,8 +1,11 @@
+// src/app.rs
+
 use crate::canvas::camera::Mat3F64;
+use crate::canvas::labels::{CanvasLabel, LabelAnchor};
 use crate::canvas::plotter::Plotter;
 use crate::canvas::renderer::{CanvasCallback, CanvasGpuResources};
 use eframe::{egui, egui_wgpu};
-use egui::{vec2, Button, CornerRadius, Image, Ui, Stroke, Sense};
+use egui::{Button, CornerRadius, Image, Sense, Stroke, Ui, vec2};
 
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
@@ -16,6 +19,49 @@ pub struct Gmk3App {
     start_time: Instant,
     paused: bool,
     paused_t: f64,
+    canvas_labels: Vec<CanvasLabel>,
+}
+
+fn label_anchor_to_egui(anchor: LabelAnchor) -> egui::Align2 {
+    match anchor {
+        LabelAnchor::TopLeft => egui::Align2::LEFT_TOP,
+        LabelAnchor::TopCenter => egui::Align2::CENTER_TOP,
+        LabelAnchor::TopRight => egui::Align2::RIGHT_TOP,
+        LabelAnchor::CenterLeft => egui::Align2::LEFT_CENTER,
+        LabelAnchor::CenterCenter => egui::Align2::CENTER_CENTER,
+        LabelAnchor::CenterRight => egui::Align2::RIGHT_CENTER,
+        LabelAnchor::BottomLeft => egui::Align2::LEFT_BOTTOM,
+        LabelAnchor::BottomCenter => egui::Align2::CENTER_BOTTOM,
+        LabelAnchor::BottomRight => egui::Align2::RIGHT_BOTTOM,
+    }
+}
+
+fn draw_canvas_labels(painter: &egui::Painter, rect: egui::Rect, labels: &[CanvasLabel]) {
+    let w = rect.width();
+    let h = rect.height();
+    for label in labels {
+        if label.alpha <= 0.001 {
+            continue;
+        }
+        let px = rect.left() + (label.pos_ndc[0] * 0.5 + 0.5) * w + label.offset_pt[0];
+        let py = rect.top() + (0.5 - label.pos_ndc[1] * 0.5) * h + label.offset_pt[1];
+
+        let base = egui::Color32::from_rgba_unmultiplied(
+            (label.color[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+            (label.color[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+            (label.color[2].clamp(0.0, 1.0) * 255.0).round() as u8,
+            (label.color[3].clamp(0.0, 1.0) * 255.0).round() as u8,
+        );
+        let color = base.gamma_multiply(label.alpha);
+
+        painter.text(
+            egui::pos2(px, py),
+            label_anchor_to_egui(label.anchor),
+            &label.text,
+            egui::FontId::proportional(label.font_size_pt),
+            color,
+        );
+    }
 }
 
 fn rounded_square_icon_button(ui: &mut Ui, image: Image<'_>) -> egui::Response {
@@ -69,7 +115,6 @@ fn custom_rounded_square_button(ui: &mut Ui) -> egui::Response {
     response
 }
 
-
 impl Gmk3App {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
@@ -90,6 +135,7 @@ impl Gmk3App {
             start_time: Instant::now(),
             paused: false,
             paused_t: 0.0,
+            canvas_labels: Vec::with_capacity(48),
         }
     }
 
@@ -195,7 +241,7 @@ impl Gmk3App {
         ui.label(format!("half_height: {:.3}", camera.half_height));
         ui.add(
             egui::DragValue::new(&mut camera.half_height)
-                .speed(0.05)
+                .speed(0.05),
         );
         ui.label(format!(
             "proj 可逆: {}",
@@ -244,18 +290,22 @@ impl Gmk3App {
         let update_fn = &mut self.update_fn;
         self.plotter.update(t, |p| update_fn(p));
 
-        // 黑底 + wgpu 绘制回调 + 细框线
+        // 黑底 + wgpu 绘制回调 + 坐标文字 + 细框线
         let painter = ui.painter_at(canvas_rect);
         painter.rect_filled(canvas_rect, 0.0, egui::Color32::BLACK);
 
         let ppp = ui.ctx().pixels_per_point();
         let viewport_px = [canvas_rect.width() * ppp, canvas_rect.height() * ppp];
         let draw_data = self.plotter.prepare_draw_data(viewport_px, ppp);
+        self.plotter
+            .prepare_labels_into(viewport_px, ppp, &mut self.canvas_labels);
 
         painter.add(egui_wgpu::Callback::new_paint_callback(
             canvas_rect,
             CanvasCallback { data: draw_data },
         ));
+
+        draw_canvas_labels(&painter, canvas_rect, &self.canvas_labels);
 
         painter.rect_stroke(
             canvas_rect,
@@ -274,7 +324,7 @@ impl eframe::App for Gmk3App {
         egui::Panel::top("top_bar").show(ui, |ui| self.draw_top_bar(ui));
 
         // 2. 右侧最外层：工具切换栏
-        egui::Panel::right("tool_switch").resizable(false)
+        egui::Panel::right("tool_switch")
             .resizable(false)
             .max_size(54.0)
             .show(ui, |ui| self.draw_tool_switch(ui));

@@ -2,6 +2,7 @@ use crate::canvas::camera::{
     CanvasUniforms, ConicInstance, LineVertex, Mat3F64, PointInstance, PreparedDrawData,
     ProjectiveCamera, clip_line_to_ndc, extrude_line_quad,
 };
+use crate::canvas::labels::{CanvasLabel, collect_canvas_labels};
 use crate::canvas::styles::{ConicStyle, DdotStyle, DotStyle, LineStyle};
 use crate::pakoo_forest::geo::d_dot::Ddot;
 use crate::pakoo_forest::geo::{conic::Conic, dot::Dot, line::Line};
@@ -13,7 +14,8 @@ use crate::pakoo_forest::geo::{conic::Conic, dot::Dot, line::Line};
 /// 次网格线的目标像素间距（喂给 nice numbers 算法）
 const MINOR_TARGET_PX: f64 = 24.0;
 /// 主网格与次网格步长比（主网格线每隔 5 条次网格线一条）
-const MAJOR_EVERY: i64 = 5;
+// 可见性：
+pub(crate) const MAJOR_EVERY: i64 = 5;
 
 /// 次/主网格线颜色与像素线宽
 const GRID_MINOR_COLOR: [f32; 4] = [0.16, 0.16, 0.17, 1.0];
@@ -416,6 +418,28 @@ impl Plotter {
             conic_instances,
             point_instances,
         }
+    }
+
+    pub fn prepare_labels_into(
+        &self,
+        viewport_px: [f32; 2],
+        pixels_per_point: f32,
+        out: &mut Vec<CanvasLabel>,
+    ) {
+        collect_canvas_labels(
+            &self.camera,
+            self.show_grid,
+            self.show_axes,
+            viewport_px,
+            pixels_per_point,
+            out,
+        );
+    }
+
+    pub fn prepare_labels(&self, viewport_px: [f32; 2], pixels_per_point: f32) -> Vec<CanvasLabel> {
+        let mut out = Vec::with_capacity(48);
+        self.prepare_labels_into(viewport_px, pixels_per_point, &mut out);
+        out
     }
 }
 
