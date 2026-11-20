@@ -29,7 +29,17 @@ pub mod dot;
 pub mod line;
 pub mod q_dot;
 pub mod x_line;
+pub mod conic_index;
+pub mod conic_test;
+pub mod conic_classify;
 
 pub use conic::Conic;
 pub use dot::Dot;
 pub use line::Line;
+//
+pub use d_dot::Ddot;
+// pub use d_x_line::DXLine;
+// pub use q_dot::QDot;
+
+
+

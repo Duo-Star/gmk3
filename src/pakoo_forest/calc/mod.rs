@@ -22,7 +22,11 @@ pub mod mat3c;
 pub mod mat3f64;
 pub mod vec3c;
 
+//
 pub use complex::Complex;
+//
 pub use cov3c::Cov3C;
+//
 pub use mat3c::Mat3C;
+//
 pub use vec3c::Vec3C;

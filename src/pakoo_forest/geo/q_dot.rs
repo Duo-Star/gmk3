@@ -1,4 +1,5 @@
-//
+// src/pakoo_forest/geo/q_dot.rs
+// 
 use crate::pakoo_forest::geo::{Dot, Line};
 
 // 一对"一对点"
@@ -19,4 +20,8 @@ impl Qdot {
             n: n_,
         }
     }
+    
+    
+    
+    
 }

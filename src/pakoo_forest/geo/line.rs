@@ -32,6 +32,8 @@ pub struct Line {
 impl Line {
     /// 无穷远直线 `(0 : 0 : 1)`
     pub const INF: Line = Line::new(Complex::ZERO, Complex::ZERO, Complex::ONE);
+    pub const X_AXIS: Line = Line::new(Complex::ZERO, Complex::ONE, Complex::ZERO);
+    pub const Y_AXIS: Line = Line::new(Complex::ONE, Complex::ZERO, Complex::ZERO);
 
     // ------------------------------------------------------------------
     // 构造与分解
@@ -129,6 +131,20 @@ impl Line {
     pub fn contains(&self, p: &Dot, eps: f64) -> bool {
         let s = eps * (1.0 + self.norm() * p.norm());
         self.evaluate(p).abs() <= s
+    }
+
+    /// 点 `d` 到直线的有向/复数距离（与 `l` 和 `d` 的齐次缩放无关）。
+    /// 若 `d` 在无穷远（`z == 0`）或直线退化（`a² + b² == 0`），返回非有限值（如 `NaN` / `inf`）。
+    #[inline]
+    pub fn distance(&self, d: Dot) -> Complex {
+        let denom_xy = (self.x() * self.x() + self.y() * self.y()).sqrt();
+        self.evaluate(&d) / (d.z() * denom_xy)
+    }
+
+    /// 点 `d` 到直线的实数距离（模长）。
+    #[inline]
+    pub fn distance_f64(&self, d: Dot) -> f64 {
+        self.distance(d).abs()
     }
 
     /// 直线方向的无穷远点 `(b : −a : 0)`。
@@ -415,6 +431,32 @@ mod tests {
             l.scaled(c(2.0, 0.0)),
             Line::from_cov3c(l.to_cov3c().mul_complex(c(2.0, 0.0)))
         );
+    }
+
+    // ---- 点到直线距离 ----
+
+    #[test]
+    fn distance_to_dot() {
+        // 直线 x = 0 到点 (3, 4, 1) 的距离为 3，到直线上点的距离为 0
+        let y_axis = Line::Y_AXIS; // x = 0[cite: 2]
+        let p = Dot::from_f64s(3.0, 4.0, 1.0);
+        let on_line = Dot::from_f64s(0.0, 5.0, 1.0);
+
+        assert!((y_axis.distance_f64(p) - 3.0).abs() < EPS);
+        assert!(y_axis.distance(on_line).abs() < EPS);
+
+        // 经典斜线：3x + 4y - 10 = 0 到原点 (0, 0, 1) 的距离为 |-10| / 5 = 2
+        let l = Line::from_f64s(3.0, 4.0, -10.0);
+        assert!((l.distance_f64(Dot::ZERO) - 2.0).abs() < EPS);
+
+        // 齐次尺度不变性：缩放直线或点不影响距离模长
+        let l_scaled = l.scaled(c(2.0, -1.0));
+        let p_scaled = p.scaled(c(0.5, 1.5));
+        assert!((l_scaled.distance_f64(p_scaled) - l.distance_f64(p)).abs() < EPS);
+
+        // 无穷远点 / 无穷远直线退化时返回非有限值
+        assert!(!l.distance_f64(Dot::I).is_finite());
+        assert!(!Line::INF.distance_f64(p).is_finite());
     }
 
     // ---- 谓词 / 输出 ----

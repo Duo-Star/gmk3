@@ -9,36 +9,6 @@ pub struct Ddot {
     q: Dot,
 }
 
-impl fmt::Display for Ddot {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "({} : {} : {}) | ({} : {} : {})",
-            self.p.x(),
-            self.p.y(),
-            self.p.z(),
-            self.q.x(),
-            self.q.y(),
-            self.q.z()
-        )
-    }
-}
-
-impl fmt::Debug for Ddot {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "({} : {} : {}) | ({} : {} : {})",
-            self.p.x(),
-            self.p.y(),
-            self.p.z(),
-            self.q.x(),
-            self.q.y(),
-            self.q.z()
-        )
-    }
-}
-
 impl Ddot {
     #[inline]
     pub const fn new(p_: Dot, q_: Dot) -> Ddot {
@@ -68,5 +38,36 @@ impl Ddot {
     ///
     pub fn center(&self) -> Dot {
         self.p.mid(&self.q)
+    }
+}
+
+
+impl fmt::Display for Ddot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "({} : {} : {}) | ({} : {} : {})",
+            self.p.x(),
+            self.p.y(),
+            self.p.z(),
+            self.q.x(),
+            self.q.y(),
+            self.q.z()
+        )
+    }
+}
+
+impl fmt::Debug for Ddot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "({} : {} : {}) | ({} : {} : {})",
+            self.p.x(),
+            self.p.y(),
+            self.p.z(),
+            self.q.x(),
+            self.q.y(),
+            self.q.z()
+        )
     }
 }

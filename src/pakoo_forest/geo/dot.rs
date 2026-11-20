@@ -73,6 +73,13 @@ impl Dot {
         Some((self.p.v[0] / self.p.v[2], self.p.v[1] / self.p.v[2]))
     }
 
+    // 仿射坐标 实数
+    #[inline]
+    pub fn to_affine_f64(&self) -> Option<(f64, f64)> {
+        let (ax, ay) = self.to_affine()?;
+        Some((ax.re, ay.re))
+    }
+
     /// 齐次分量 `x`。
     #[inline]
     pub fn x(&self) -> Complex {
@@ -174,6 +181,29 @@ impl Dot {
     #[must_use]
     pub fn norm(&self) -> f64 {
         self.p.norm()
+    }
+
+
+    /// 计算与另一点的复数坐标差向量 `(dx, dy)`（与两点的齐次缩放无关）
+    /// 若任一点为无穷远点（`z == 0`），返回 `None`。
+    #[inline]
+    pub fn delta_affine(&self, other: &Dot) -> Option<(Complex, Complex)> {
+        let (x1, y1) = self.to_affine()?;
+        let (x2, y2) = other.to_affine()?;
+        Some((x2 - x1, y2 - y1))
+    }
+
+    /// 计算与另一点的欧氏距离（实数模长）。
+    /// 若任一点为无穷远点（`z == 0`），返回非有限值。
+    #[inline]
+    pub fn distance(&self, other: &Dot) -> f64 {
+        let (p, q) = (&self.p.v, &other.p.v);
+        let (z1, z2) = (p[2], q[2]);
+        let dx = p[0] * z2 - q[0] * z1;
+        let dy = p[1] * z2 - q[1] * z1;
+        let dz = z1 * z2;
+        let d2 = dx.norm_sqr() + dy.norm_sqr();
+        d2.sqrt() / dz.abs()
     }
 
     /// 计算一个点和另一点的中点
@@ -459,6 +489,32 @@ mod tests {
             p.scaled(c(2.0, 0.0)),
             Dot::from_vec3c(p.p.mul_complex(c(2.0, 0.0)))
         );
+    }
+
+    // ---- 两点距离 ----
+
+    #[test]
+    fn distance_to_dot() {
+        let p = Dot::from_f64s(1.0, 2.0, 1.0);
+        let q = Dot::from_f64s(4.0, 6.0, 1.0);
+
+        // (1, 2) 到 (4, 6) 的欧氏距离为 sqrt(3^2 + 4^2) = 5；同点距离为 0
+        assert!((p.distance(&q) - 5.0).abs() < EPS);
+        assert!(p.distance(&p).abs() < EPS);
+
+        // 齐次坐标非单位 z 分量与缩放不变性
+        let p_h = Dot::from_f64s(2.0, 4.0, 2.0).scaled(c(1.0, -1.0));
+        let q_h = Dot::from_f64s(12.0, 18.0, 3.0).scaled(c(-0.5, 2.0));
+        assert!((p_h.distance(&q_h) - 5.0).abs() < EPS);
+
+        // 复数仿射坐标距离：|(3 + 4i) - (0 + 0i)| = 5
+        let cp = Dot::from_affine(Complex::ZERO, Complex::ZERO);
+        let cq = Dot::from_affine(c(3.0, 0.0), c(0.0, 4.0));
+        assert!((cp.distance(&cq).abs() - 5.0).abs() < EPS);
+
+        // 无穷远点距离为非有限值
+        assert!(!p.distance(&Dot::I).is_finite());
+        assert!(!Dot::I.distance(&Dot::J).is_finite());
     }
 
     // ---- 谓词 / 输出 ----
