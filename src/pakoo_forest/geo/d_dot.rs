@@ -1,7 +1,6 @@
 use crate::pakoo_forest::calc::Vec3C;
 use crate::pakoo_forest::geo::{Dot, Line};
 use std::fmt;
-use std::fmt::{Display, Formatter};
 
 // 一对点
 pub struct Ddot {
@@ -25,17 +24,23 @@ impl Ddot {
     /// 虚圆点  各向同性点
     pub const CYCLIC: Ddot = Ddot::new(Dot::I, Dot::J);
 
-    pub fn p(&self) -> Dot {
+    #[inline]
+    pub const fn p(&self) -> Dot {
         self.p
     }
-    pub fn q(&self) -> Dot {
+    #[inline]
+    pub const fn q(&self) -> Dot {
         self.q
     }
-    ///
+
+    /// 两点连线
+    #[inline]
     pub fn line(&self) -> Line {
         Line::from_points(&self.p, &self.q)
     }
-    ///
+
+    /// 两点中心
+    #[inline]
     pub fn center(&self) -> Dot {
         self.p.mid(&self.q)
     }
