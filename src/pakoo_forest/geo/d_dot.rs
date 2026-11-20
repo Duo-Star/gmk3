@@ -8,6 +8,7 @@ pub struct Ddot {
     q: Dot,
 }
 
+
 impl Ddot {
     #[inline]
     pub const fn new(p_: Dot, q_: Dot) -> Ddot {
