@@ -1,15 +1,20 @@
-name: Build Wasm and Deploy to Vercel
+name: Build WASM & Deploy to Vercel
 
 on:
   push:
     branches:
-      - master
+      - main
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "--cfg getrandom_backend=\"wasm_js\""
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
@@ -17,37 +22,45 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Cache Cargo and build artifacts
+      - name: Install Trunk
+        uses: jetli/trunk-action@v0.5.0
+        with:
+          version: latest
+
+      - name: Cache Cargo & Trunk artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          key: trunk-wasm-${{ runner.os }}
+          workspaces: ". -> target"
 
-      - name: Install trunk
-        run: |
-          if ! command -v trunk >/dev/null 2>&1; then
-            cargo install trunk --locked
-          fi
-
-      - name: Build release bundle
+      - name: Build with Trunk
         run: trunk build --release
 
-      - name: Check dist files
-        run: ls -lh dist/
-
-      - name: Check dist output
-        run: ls -lh --full-time dist/
-
       - name: Install Vercel CLI
-        run: npm i -g vercel@latest
+        run: npm install --global vercel@latest
 
-      - name: Pull Vercel project settings
+      - name: Pull Vercel project environment
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
-      - name: Deploy dist to Vercel production
-        run: vercel deploy ./dist --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Build Vercel prebuilt output from dist
+        run: |
+          rm -rf .vercel/output/static
+          mkdir -p .vercel/output/static
+          cp -r dist/* .vercel/output/static/
+          cat << 'EOF' > .vercel/output/config.json
+          {
+            "version": 3,
+            "routes": [
+              { "handle": "filesystem" },
+              { "src": "/(.*)", "dest": "/index.html" }
+            ]
+          }
+          EOF
+
+      - name: Deploy prebuilt artifact to Vercel Production
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
