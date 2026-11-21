@@ -191,7 +191,7 @@ mod tests {
         );
         assert_eq!(q.classify_complex(0.0), "横截型");
         assert_eq!(q.evaluate(&Dot::I), Complex::ZERO);
-        assert!(q.evaluate(&Dot::J) != Complex::ZERO);
+        assert_ne!(q.evaluate(&Dot::J), Complex::ZERO);
         // 非有限 → 无效型
         assert_eq!(
             Conic::new(

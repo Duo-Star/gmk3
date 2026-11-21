@@ -37,7 +37,7 @@
 
 use std::fmt;
 
-use crate::pakoo_forest::calc::{Complex, Cov3C, Mat3C, Vec3C};
+use crate::pakoo_forest::calc::{Complex, Mat3C, Vec3C};
 use crate::pakoo_forest::geo::d_dot::Ddot;
 use crate::pakoo_forest::geo::dot::Dot;
 use crate::pakoo_forest::geo::line::Line;
@@ -398,13 +398,14 @@ impl fmt::Display for Conic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Conic(A: {}, B: {}, C: {}, D: {}, E: {}, F: {})",
+            "Conic:(A: {}, B: {}, C: {}, D: {}, E: {}, F: {} ||| `{}`)",
             self.a(),
             self.b(),
             self.c(),
             self.d(),
             self.e(),
-            self.f()
+            self.f(),
+            self.classify(1e-12)
         )
     }
 }

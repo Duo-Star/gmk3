@@ -10,12 +10,12 @@ const TICK_FONT_SIZE_PT: f32 = 11.5;
 const AXIS_NAME_FONT_SIZE_PT: f32 = 13.0;
 
 /// 灭线渐隐区间（逻辑点 pt）：与 GPU Nyquist 均质淡出区间衔接
-const FADE_START_PT: f64 = 12.0;
-const FADE_FULL_PT: f64 = 28.0;
+const FADE_START_PT: f64 = 2.5;
+const FADE_FULL_PT: f64 = 12.0;
 
 /// 射影求解器沿线段的硬性最小步距与单段迭代上限（防爆保险）
-const MIN_SEG_SPACING_PT: f64 = 10.0;
-const MAX_TICKS_PER_SEGMENT: usize = 256;
+const MIN_SEG_SPACING_PT: f64 = 2.0;
+const MAX_TICKS_PER_SEGMENT: usize = 512;
 const MAX_GRID_INDEX: f64 = 1e14;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -448,10 +448,7 @@ fn emit_ticks_on_segment(
                     if (-1e-6..=1.0 + 1e-6).contains(&s_tick) {
                         let s_clamped = s_tick.clamp(0.0, 1.0);
                         let t = t_sparse + s_clamped * (t_dense - t_sparse);
-                        let ndc = [
-                            (1.0 - t) * p0[0] + t * p1[0],
-                            (1.0 - t) * p0[1] + t * p1[1],
-                        ];
+                        let ndc = [(1.0 - t) * p0[0] + t * p1[0], (1.0 - t) * p0[1] + t * p1[1]];
                         let fade = eval_vanishing_fade(ndc, h_inv, w_pt, h_pt, major_step, axis);
                         if fade > 0.01 {
                             let text = format_tick_value(k, major_step, minor_step);
@@ -465,13 +462,7 @@ fn emit_ticks_on_segment(
                                 font_size_pt: TICK_FONT_SIZE_PT,
                                 kind: LabelKind::AxisTick,
                             };
-                            try_push_label(
-                                label,
-                                w_pt as f32,
-                                h_pt as f32,
-                                placed_rects,
-                                out,
-                            );
+                            try_push_label(label, w_pt as f32, h_pt as f32, placed_rects, out);
                         }
                     }
                 }
@@ -676,7 +667,10 @@ fn emit_axis_name_label(
 }
 
 /// 在轴不可见时，根据 NDC 线到对应两条相对屏幕边的距离挑选更近的一条边
-fn pick_closer_horizontal_edge(l_x_ndc: [f64; 3], h_inv: &Mat3F64) -> ([f64; 2], [f64; 2], [f32; 2], LabelAnchor) {
+fn pick_closer_horizontal_edge(
+    l_x_ndc: [f64; 3],
+    h_inv: &Mat3F64,
+) -> ([f64; 2], [f64; 2], [f32; 2], LabelAnchor) {
     let [a, b, c] = l_x_ndc;
     let norm2 = a * a + b * b;
     let use_bottom = if norm2 > 1e-18 {
@@ -689,13 +683,21 @@ fn pick_closer_horizontal_edge(l_x_ndc: [f64; 3], h_inv: &Mat3F64) -> ([f64; 2],
     };
 
     if use_bottom {
-        ([-1.0, -1.0], [1.0, -1.0], [0.0, -4.0], LabelAnchor::BottomCenter)
+        (
+            [-1.0, -1.0],
+            [1.0, -1.0],
+            [0.0, -4.0],
+            LabelAnchor::BottomCenter,
+        )
     } else {
         ([-1.0, 1.0], [1.0, 1.0], [0.0, 4.0], LabelAnchor::TopCenter)
     }
 }
 
-fn pick_closer_vertical_edge(l_y_ndc: [f64; 3], h_inv: &Mat3F64) -> ([f64; 2], [f64; 2], [f32; 2], LabelAnchor) {
+fn pick_closer_vertical_edge(
+    l_y_ndc: [f64; 3],
+    h_inv: &Mat3F64,
+) -> ([f64; 2], [f64; 2], [f32; 2], LabelAnchor) {
     let [a, b, c] = l_y_ndc;
     let norm2 = a * a + b * b;
     let use_left = if norm2 > 1e-18 {
@@ -708,9 +710,19 @@ fn pick_closer_vertical_edge(l_y_ndc: [f64; 3], h_inv: &Mat3F64) -> ([f64; 2], [
     };
 
     if use_left {
-        ([-1.0, -1.0], [-1.0, 1.0], [5.0, 0.0], LabelAnchor::CenterLeft)
+        (
+            [-1.0, -1.0],
+            [-1.0, 1.0],
+            [5.0, 0.0],
+            LabelAnchor::CenterLeft,
+        )
     } else {
-        ([1.0, -1.0], [1.0, 1.0], [-5.0, 0.0], LabelAnchor::CenterRight)
+        (
+            [1.0, -1.0],
+            [1.0, 1.0],
+            [-5.0, 0.0],
+            LabelAnchor::CenterRight,
+        )
     }
 }
 
@@ -918,8 +930,16 @@ mod tests {
 
         let zeros = labels.iter().filter(|l| l.text == "0").count();
         assert_eq!(zeros, 1);
-        assert!(labels.iter().any(|l| l.kind == LabelKind::AxisName && l.text == "X"));
-        assert!(labels.iter().any(|l| l.kind == LabelKind::AxisName && l.text == "Y"));
+        assert!(
+            labels
+                .iter()
+                .any(|l| l.kind == LabelKind::AxisName && l.text == "X")
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|l| l.kind == LabelKind::AxisName && l.text == "Y")
+        );
     }
 
     #[test]

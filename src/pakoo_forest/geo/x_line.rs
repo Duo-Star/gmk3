@@ -25,6 +25,7 @@ impl XLine {
     pub  fn from_d4(lm_p1: Dot, lm_p2: Dot, ln_p1: Dot, ln_p2: Dot) -> XLine {
         XLine { lm: lm_p1.join(lm_p2), ln: ln_p1.join(ln_p2) }
     }
+
     /// 从点和骈点
     /// 点作为交叉直线的中心
     #[inline]
@@ -56,7 +57,7 @@ impl fmt::Display for XLine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} | {}",
+            "XLine:({} ~ {})",
             self.lm,
             self.ln,
         )
@@ -67,7 +68,7 @@ impl fmt::Debug for XLine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} | {}",
+            "XLine:({} ~ {})",
             self.lm,
             self.ln,
         )

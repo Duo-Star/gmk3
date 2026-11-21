@@ -278,13 +278,13 @@ impl Default for Dot {
 
 impl fmt::Display for Dot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({} : {} : {})", self.x(), self.y(), self.z())
+        write!(f, "Dot:({} : {} : {})", self.x(), self.y(), self.z())
     }
 }
 
 impl fmt::Debug for Dot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Dot({} : {} : {})", self.x(), self.y(), self.z())
+        write!(f, "Dot:Dot({} : {} : {})", self.x(), self.y(), self.z())
     }
 }
 

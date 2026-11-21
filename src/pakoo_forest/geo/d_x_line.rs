@@ -2,6 +2,7 @@
 
 // 一对交叉直线
 
+use std::fmt;
 use crate::pakoo_forest::geo::x_line::XLine;
 
 pub struct DXLine {
@@ -20,4 +21,29 @@ impl DXLine {
     }
     
     
+}
+
+
+
+
+impl fmt::Display for DXLine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DXLine:({} ~ {})",
+            self.xlm,
+            self.xln,
+        )
+    }
+}
+
+impl fmt::Debug for DXLine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DXLine:({} ~ {})",
+            self.xlm,
+            self.xln,
+        )
+    }
 }

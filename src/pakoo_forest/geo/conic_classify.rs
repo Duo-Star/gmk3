@@ -102,7 +102,8 @@ impl Conic {
                     } else {
                         (a, b, c, d, e, f)
                     };
-                    let s = crate::pakoo_forest::geo::conic::schur_complement(a2, b2, c2, d2, e2, f2);
+                    let s =
+                        crate::pakoo_forest::geo::conic::schur_complement(a2, b2, c2, d2, e2, f2);
                     if s < -eps {
                         "实圆"
                     } else if s > eps {
@@ -114,12 +115,13 @@ impl Conic {
                     "实抛物线"
                 } else if delta < -eps {
                     // Δ∞ < 0：椭圆族
-                    let (a2, b2, c2, d2, e2, f2) = if a < 0.0 {
+                    let (a2, b2, c2, d2, e2, f2): (f64, f64, f64, f64, f64, f64) = if a < 0.0 {
                         (-a, -b, -c, -d, -e, -f)
                     } else {
                         (a, b, c, d, e, f)
                     };
-                    let s = crate::pakoo_forest::geo::conic::schur_complement(a2, b2, c2, d2, e2, f2);
+                    let s =
+                        crate::pakoo_forest::geo::conic::schur_complement(a2, b2, c2, d2, e2, f2);
                     if s < -eps {
                         "实椭圆"
                     } else if s > eps {

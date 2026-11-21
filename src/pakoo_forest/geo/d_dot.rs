@@ -52,13 +52,9 @@ impl fmt::Display for Ddot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "({} : {} : {}) | ({} : {} : {})",
-            self.p.x(),
-            self.p.y(),
-            self.p.z(),
-            self.q.x(),
-            self.q.y(),
-            self.q.z()
+            "Ddot:({} ~ {})",
+            self.p,
+            self.q,
         )
     }
 }
@@ -67,13 +63,11 @@ impl fmt::Debug for Ddot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "({} : {} : {}) | ({} : {} : {})",
-            self.p.x(),
-            self.p.y(),
-            self.p.z(),
-            self.q.x(),
-            self.q.y(),
-            self.q.z()
+            "Ddot:({} ~ {})",
+            self.p,
+            self.q,
         )
     }
 }
+
+

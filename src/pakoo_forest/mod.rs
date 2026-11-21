@@ -1,3 +1,5 @@
+// src/pakoo_forest/mod.rs
+
 //! `pakoo_forest` —— gmk3 的数学内核。
 //!
 //! 面向命令式数值计算几何：

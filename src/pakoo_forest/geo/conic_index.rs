@@ -1,10 +1,7 @@
 use crate::pakoo_forest::geo::Conic;
 
 
-use std::fmt;
-
-use crate::pakoo_forest::calc::{Complex, Cov3C, Mat3C, Vec3C};
-use crate::pakoo_forest::geo::d_dot::Ddot;
+use crate::pakoo_forest::calc::{Complex, Mat3C, Vec3C};
 use crate::pakoo_forest::geo::dot::Dot;
 use crate::pakoo_forest::geo::line::Line;
 //
@@ -300,6 +297,7 @@ fn diag_rot45(
     }
 }
 
+
 #[inline]
 fn line_basis_pair(line: Line) -> Option<(Vec3C, Vec3C)> {
     let (a, b, c) = (line.x(), line.y(), line.z());
@@ -587,8 +585,8 @@ impl Conic {
         let m1 = m_mat.col_vec(1);
         let m2 = m_mat.col_vec(2);
 
-        let inv_2s0 = (s0.mul_f64(2.0)).recip();
-        let inv_2s2 = (s2.mul_f64(2.0)).recip();
+        let inv_2s0 = s0.mul_f64(2.0).recip();
+        let inv_2s2 = s2.mul_f64(2.0).recip();
         let v0 = m2.mul_complex(inv_2s2).sub(m0.mul_complex(inv_2s0));
         let v1 = m1.div_complex(s1);
         let v2 = m2.mul_complex(inv_2s2).add(m0.mul_complex(inv_2s0));

@@ -1,9 +1,9 @@
-use eframe::{AppCreator, CreationContext, egui};
+// src/main.rs
+use eframe::{AppCreator, egui};
 use gmk3::app::Gmk3App;
 use gmk3::canvas::plotter::Plotter;
-use gmk3::canvas::styles::DotShape::Circle;
-use gmk3::pakoo_forest::calc::{Complex, Mat3C};
-use gmk3::pakoo_forest::geo::{Conic, Dot, Line};
+use gmk3::pakoo_forest::geo::{Conic, Dot};
+
 
 fn se() -> AppCreator<'static> {
     Box::new(|cc| {
@@ -24,10 +24,7 @@ fn se() -> AppCreator<'static> {
             // p.draw_dot(cen);
             p.draw_dot(pp);
 
-            
 
-
-            // 也可以直接利用 t 修改视角射影矩阵：
             // p.camera_mut().proj_matrix.m[2][0] = 2.0 * t.sin();
             // p.camera_mut().proj_matrix.m[2][1] = 2.0 * (0.5*t).cos();
             let _ = t;
@@ -42,6 +39,7 @@ fn main() -> eframe::Result {
     //     "{}",
     //     Conic::UNIT_CIRCLE.intersect_line(&Line::from_f64s(1.0, 0.0, -2.0))
     // );
+    println!("{}", Conic::UNIT_CIRCLE);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("gmk3")
@@ -60,8 +58,7 @@ fn main() {
     // 把 Rust 的 log / panic 转发到浏览器控制台
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
-    // 网页端没有 NativeOptions，使用 WebOptions
-    // 默认会在可用时优先使用 wgpu，否则自动回退到 WebGL
+    // 网页端没有 NativeOptions，使用 WebOptions 默认会在可用时优先使用 wgpu，否则自动回退到 WebGL
     let web_options = eframe::WebOptions::default();
 
     wasm_bindgen_futures::spawn_local(async {
@@ -71,17 +68,15 @@ fn main() {
             .expect("没有 document");
 
         let canvas = document
-            .get_element_by_id("pakoo_canvas") // 与 index.html 中的 canvas id 一致
+            .get_element_by_id("pakoo_canvas")
             .expect("找不到 id 为 the_canvas_id 的 canvas")
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("the_canvas_id 不是一个 HtmlCanvasElement");
 
-        // 网页端用 WebRunner::start 代替 run_native
         let start_result = eframe::WebRunner::new()
             .start(canvas, web_options, se())
             .await;
 
-        // 移除页面上的加载提示 / 错误显示
         let loading_text = document.get_element_by_id("loading_text");
         match start_result {
             Ok(_) => {

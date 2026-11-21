@@ -9,12 +9,13 @@
 //          q  pm-nq : xl2   dp[2]
 // ----------------------------------
 
+use std::fmt;
 use crate::pakoo_forest::geo::d_x_line::DXLine;
 use crate::pakoo_forest::geo::x_line::XLine;
 use crate::pakoo_forest::geo::{Ddot, Dot, Line};
 
 // 一对"一对点"
-struct Qdot {
+pub struct Qdot {
     p: Dot,
     q: Dot,
     m: Dot,
@@ -96,3 +97,34 @@ impl Qdot {
         )
     }
 }
+
+
+
+
+impl fmt::Display for Qdot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Qdot:(({} ~ {}) | ({} ~ {}))",
+            self.p,
+            self.q,
+            self.m,
+            self.n,
+        )
+    }
+}
+
+impl fmt::Debug for Qdot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Qdot:(({} ~ {}) | ({} ~ {}))",
+            self.p,
+            self.q,
+            self.m,
+            self.n,
+        )
+    }
+}
+
+

@@ -20,6 +20,7 @@ pub struct Gmk3App {
     paused: bool,
     paused_t: f64,
     canvas_labels: Vec<CanvasLabel>,
+    was_multi_touch: bool,
 }
 
 fn label_anchor_to_egui(anchor: LabelAnchor) -> egui::Align2 {
@@ -64,6 +65,7 @@ fn draw_canvas_labels(painter: &egui::Painter, rect: egui::Rect, labels: &[Canva
     }
 }
 
+#[allow(dead_code)]
 fn rounded_square_icon_button(ui: &mut Ui, image: Image<'_>) -> egui::Response {
     let size = vec2(40.0, 40.0); // 1. 设置相等的宽高以形成正方形
 
@@ -136,6 +138,7 @@ impl Gmk3App {
             paused: false,
             paused_t: 0.0,
             canvas_labels: Vec::with_capacity(48),
+            was_multi_touch: false,
         }
     }
 
@@ -239,10 +242,7 @@ impl Gmk3App {
         ));
 
         ui.label(format!("half_height: {:.3}", camera.half_height));
-        ui.add(
-            egui::DragValue::new(&mut camera.half_height)
-                .speed(0.05),
-        );
+        ui.add(egui::DragValue::new(&mut camera.half_height).speed(0.05));
         ui.label(format!(
             "proj 可逆: {}",
             camera.proj_matrix.inverse().is_some()
@@ -269,7 +269,57 @@ impl Gmk3App {
         let response = ui.allocate_rect(canvas_rect, egui::Sense::click_and_drag());
 
         let aspect = (canvas_rect.width() / canvas_rect.height()) as f64;
-        if response.dragged() {
+        let aspect = (canvas_rect.width() / canvas_rect.height()) as f64;
+        let pos_to_ndc = |pos: egui::Pos2| -> [f64; 2] {
+            let fx = ((pos.x - canvas_rect.center().x) / (0.5 * canvas_rect.width())) as f64;
+            let fy = (-(pos.y - canvas_rect.center().y) / (0.5 * canvas_rect.height())) as f64;
+            [fx, fy]
+        };
+
+        // 1. 移动端多指手势（双指捏合缩放 + 双指拖动平移）
+        let multi_touch = ui.input(|i| i.multi_touch());
+        let multi_touch_active = match multi_touch {
+            Some(mt)
+                if mt.num_touches >= 2
+                    && (canvas_rect.contains(mt.start_pos)
+                        || canvas_rect.contains(mt.center_pos)
+                        || response.dragged()) =>
+            {
+                let dx_ndc = (mt.translation_delta.x / (0.5 * canvas_rect.width())) as f64;
+                let dy_ndc = (-mt.translation_delta.y / (0.5 * canvas_rect.height())) as f64;
+                if dx_ndc.abs() > 0.0 || dy_ndc.abs() > 0.0 {
+                    self.plotter
+                        .camera_mut()
+                        .pan_by_ndc_delta(dx_ndc, dy_ndc, aspect);
+                }
+
+                let zoom = mt.zoom_delta as f64;
+                if zoom.is_finite() && zoom > 0.0 && (zoom - 1.0).abs() > 1e-5 {
+                    let focus_ndc = pos_to_ndc(mt.center_pos);
+                    self.plotter
+                        .camera_mut()
+                        .zoom_by_at_ndc(zoom, focus_ndc, aspect);
+                }
+                true
+            }
+            _ => false,
+        };
+
+        // 2. 桌面端鼠标右键：转动射影视角（直接更新 proj_matrix）
+        if !multi_touch_active && response.dragged_by(egui::PointerButton::Secondary) {
+            let delta = response.drag_delta();
+            let dx_ndc = (2.6 * delta.x / (0.5 * canvas_rect.width())) as f64;
+            let dy_ndc = (2.6 * (-delta.y) / (0.5 * canvas_rect.height())) as f64;
+            self.plotter
+                .camera_mut()
+                .tilt_by_ndc_delta(dx_ndc, dy_ndc, aspect);
+        }
+        // 3. 左键/单指/中键拖动：平移画布（屏蔽双指期间及刚抬起一指的过渡帧）
+        else if !multi_touch_active
+            && !self.was_multi_touch
+            && (response.dragged_by(egui::PointerButton::Primary)
+                || response.dragged_by(egui::PointerButton::Middle))
+        {
             let delta = response.drag_delta();
             let dx_ndc = (delta.x / (0.5 * canvas_rect.width())) as f64;
             let dy_ndc = (-delta.y / (0.5 * canvas_rect.height())) as f64;
@@ -277,12 +327,30 @@ impl Gmk3App {
                 .camera_mut()
                 .pan_by_ndc_delta(dx_ndc, dy_ndc, aspect);
         }
-        if response.hovered() {
-            let scroll_y = ui.input(|i| i.smooth_scroll_delta.y);
+
+        self.was_multi_touch = multi_touch_active;
+
+        // 4. 桌面端滚轮 / 笔记本触控板缩放（以光标为中心）
+        if !multi_touch_active && response.hovered() {
+            let (scroll_y, pinch_zoom, hover_pos) = ui.input(|i| {
+                (
+                    i.smooth_scroll_delta.y,
+                    i.zoom_delta(),
+                    i.pointer.hover_pos(),
+                )
+            });
+            let focus_ndc = hover_pos.map(pos_to_ndc).unwrap_or([0.0, 0.0]);
+
             if scroll_y.abs() > 0.0 {
+                self.plotter.camera_mut().zoom_by_at_ndc(
+                    (scroll_y as f64 * 0.002).exp(),
+                    focus_ndc,
+                    aspect,
+                );
+            } else if pinch_zoom > 0.0 && (pinch_zoom - 1.0).abs() > 1e-5 {
                 self.plotter
                     .camera_mut()
-                    .zoom_by((scroll_y as f64 * 0.002).exp());
+                    .zoom_by_at_ndc(pinch_zoom as f64, focus_ndc, aspect);
             }
         }
 

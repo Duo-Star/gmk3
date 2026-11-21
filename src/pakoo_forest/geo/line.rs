@@ -247,13 +247,13 @@ impl Line {
 
 impl fmt::Display for Line {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({} : {} : {})", self.x(), self.y(), self.z())
+        write!(f, "Line:[{} : {} : {}]", self.x(), self.y(), self.z())
     }
 }
 
 impl fmt::Debug for Line {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Line({} : {} : {})", self.x(), self.y(), self.z())
+        write!(f, "Line:[{} : {} : {}]", self.x(), self.y(), self.z())
     }
 }
 

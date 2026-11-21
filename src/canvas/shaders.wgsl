@@ -46,15 +46,20 @@ fn vs_grid(@builtin(vertex_index) vid: u32) -> GridVertexOut {
 fn eval_grid_coverage(uv: vec2<f32>, uv_deriv: vec2<f32>, line_px: f32, max_frac: f32) -> f32 {
     // 每像素在格子坐标下的覆盖尺度（乘以 1.15 作为轻微抗锯齿羽化）
     let fp = max(uv_deriv * 1.15, vec2<f32>(1e-6));
-    let target_w = min(line_px * uv_deriv, vec2<f32>(max_frac));
+
+    // 1. 真正绘制清晰线条时，允许线宽维持完整亮度直到接近 2px 间距（最高 50% 占空比）
+    let line_w = min(line_px * uv_deriv, vec2<f32>(0.3));
+    // 2. 进入亚像素过密区后的渐近平均亮度上限（防止地平线泛白过曝）
+    let avg_w = min(line_px * uv_deriv, vec2<f32>(max_frac));
 
     let d_uv = abs(fract(uv - 0.5) - 0.5);
-    let hw = 0.5 * target_w;
+    let hw = 0.5 * line_w;
     let hp = 0.5 * fp;
 
     let overlap = max(min(d_uv + hp, hw) - max(d_uv - hp, -hw), vec2<f32>(0.0)) / fp;
+    // 在间距 2px (uv_deriv = 0.5) 到 1px (uv_deriv = 1.0) 之间平滑过渡到均质雾化
     let nyquist_blend = clamp(uv_deriv * 2.0 - 1.0, vec2<f32>(0.0), vec2<f32>(1.0));
-    let cov = mix(overlap, target_w, nyquist_blend);
+    let cov = mix(overlap, avg_w, nyquist_blend);
     return clamp(cov.x + cov.y - cov.x * cov.y, 0.0, 1.0);
 }
 
@@ -92,7 +97,7 @@ fn fs_grid(in: GridVertexOut) -> @location(0) vec4<f32> {
     // 若像素距离地平线 w_z = 0 不足 1 像素（含灭点 w_x = w_z = 0），强制进入过密均质区
     let grad_wz_px = length(vec2<f32>(dw_dx.z, dw_dy.z));
     if (grad_wz_px > 1e-8 && abs(wz) < grad_wz_px) {
-        uv_deriv = max(uv_deriv, vec2<f32>(1.0));
+        uv_deriv = max(uv_deriv, vec2<f32>(u.major_every));
     }
 
     let minor_cov = eval_grid_coverage(uv, uv_deriv, u.minor_line_px, 0.085);

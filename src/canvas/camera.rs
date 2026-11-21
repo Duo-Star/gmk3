@@ -111,6 +111,75 @@ impl ProjectiveCamera {
         self.half_height = (self.half_height / factor).clamp(1e-6, 1e6);
     }
 
+    /// 以给定屏幕 NDC 坐标 `focus_ndc` 为锚点进行缩放（保持该屏幕位置下的几何点不动）
+    pub fn zoom_by_at_ndc(&mut self, factor: f64, focus_ndc: [f64; 2], aspect: f64) {
+        if !factor.is_finite() || factor <= 0.0 {
+            return;
+        }
+        let old_hh = self.half_height;
+        let new_hh = (old_hh / factor).clamp(1e-6, 1e6);
+        let d_hh = old_hh - new_hh;
+        self.center[0] += focus_ndc[0] * aspect.max(1e-6) * d_hh;
+        self.center[1] += focus_ndc[1] * d_hh;
+        self.half_height = new_hh;
+    }
+
+    /// 根据屏幕 NDC 拖拽增量转动射影视角（直接作用在 `proj_matrix` 本体，不引入隐藏矩阵）：
+    /// `H_new = T_ndc * H = V * (V^-1 * T_ndc * V * proj_matrix)`
+    pub fn tilt_by_ndc_delta(&mut self, dx_ndc: f64, dy_ndc: f64, aspect: f64) {
+        if !dx_ndc.is_finite() || !dy_ndc.is_finite() {
+            return;
+        }
+        let sx = 1.0 / (self.half_height * aspect.max(1e-6));
+        let sy = 1.0 / self.half_height;
+        let view = Mat3F64 {
+            m: [
+                [sx, 0.0, -self.center[0] * sx],
+                [0.0, sy, -self.center[1] * sy],
+                [0.0, 0.0, 1.0],
+            ],
+        };
+        let view_inv = Mat3F64 {
+            m: [
+                [1.0 / sx, 0.0, self.center[0]],
+                [0.0, 1.0 / sy, self.center[1]],
+                [0.0, 0.0, 1.0],
+            ],
+        };
+
+        // 灵敏度：拖拽半个画布宽度 (dx_ndc = 1.0) 使灭线恰好进入画面边缘 (x_ndc = 1.0)
+        const TILT_SENSITIVITY: f64 = 1.0;
+        let kx = dx_ndc * TILT_SENSITIVITY;
+        let ky = dy_ndc * TILT_SENSITIVITY;
+
+        let t_ndc = Mat3F64 {
+            m: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [kx, ky, 1.0]],
+        };
+
+        let mut p_new = view_inv
+            .mul_mat(&t_ndc)
+            .mul_mat(&view)
+            .mul_mat(&self.proj_matrix);
+
+        // 保持齐次矩阵量级处于数值健康区间（兼容 UI DragValue [-100, 100]，不改变几何含义）
+        let mut max_abs = 0.0_f64;
+        for row in p_new.m {
+            for v in row {
+                max_abs = max_abs.max(v.abs());
+            }
+        }
+        if max_abs > 20.0 || (max_abs > 1e-18 && max_abs < 0.05) {
+            let s = 1.0 / max_abs;
+            for row in &mut p_new.m {
+                for v in row {
+                    *v *= s;
+                }
+            }
+        }
+
+        self.proj_matrix = p_new;
+    }
+
     pub fn ndc_transforms(&self, aspect: f64) -> (Mat3F64, Mat3F64) {
         let sx = 1.0 / (self.half_height * aspect.max(1e-6));
         let sy = 1.0 / self.half_height;
@@ -243,7 +312,6 @@ pub fn extrude_line_quad(
     out.extend_from_slice(&[v0_pos, v1_pos, v0_neg, v0_neg, v1_pos, v1_neg]);
 }
 
-
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CanvasUniforms {
@@ -295,4 +363,62 @@ pub struct PreparedDrawData {
     pub line_vertices: Vec<LineVertex>,
     pub conic_instances: Vec<ConicInstance>,
     pub point_instances: Vec<PointInstance>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tilt_respects_existing_rotation_and_keeps_center_pinned() {
+        let mut cam = ProjectiveCamera::default();
+        cam.center = [10.0, -5.0];
+        cam.half_height = 2.0;
+        // 预先在 proj_matrix 中放入 90 度逆时针旋转
+        cam.proj_matrix = Mat3F64 {
+            m: [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+        };
+
+        let aspect = 1.5;
+        let (_, h_inv_before) = cam.ndc_transforms(aspect);
+        // 当前屏幕中心 [0, 0] 对应的世界坐标
+        let center_w = h_inv_before.mul_vec([0.0, 0.0, 1.0]);
+
+        // 向屏幕右方拖拽右键
+        cam.tilt_by_ndc_delta(1.0, 0.0, aspect);
+        let (h_after, _) = cam.ndc_transforms(aspect);
+
+        // 1. 屏幕中心世界点依然停留在屏幕中心 [0, 0]
+        let p_center = h_after.mul_vec(center_w);
+        assert!((p_center[0] / p_center[2]).abs() < 1e-12);
+        assert!((p_center[1] / p_center[2]).abs() < 1e-12);
+
+        // 2. 沿屏幕 +X 方向（未旋转前对应世界 -Y）的无穷远点应落在屏幕右边缘 x_ndc = +1.0
+        let (h_before, _) = {
+            let mut c0 = cam.clone();
+            c0.proj_matrix = Mat3F64 {
+                m: [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+            };
+            c0.ndc_transforms(aspect)
+        };
+        let inf_dir_world = h_before.inverse().unwrap().mul_vec([1.0, 0.0, 0.0]);
+        let vp_ndc = h_after.mul_vec(inf_dir_world);
+        assert!((vp_ndc[0] / vp_ndc[2] - 1.0).abs() < 1e-12);
+        assert!((vp_ndc[1] / vp_ndc[2]).abs() < 1e-12);
+    }
+
+    #[test]
+    fn zoom_by_at_ndc_pins_focus_point() {
+        let mut cam = ProjectiveCamera::default();
+        let aspect = 4.0 / 3.0;
+        let focus = [0.6, -0.4];
+        let (_, h_inv) = cam.ndc_transforms(aspect);
+        let target_w = h_inv.mul_vec([focus[0], focus[1], 1.0]);
+
+        cam.zoom_by_at_ndc(2.5, focus, aspect);
+        let (h_new, _) = cam.ndc_transforms(aspect);
+        let mapped = h_new.mul_vec(target_w);
+        assert!((mapped[0] / mapped[2] - focus[0]).abs() < 1e-12);
+        assert!((mapped[1] / mapped[2] - focus[1]).abs() < 1e-12);
+    }
 }
