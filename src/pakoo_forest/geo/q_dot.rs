@@ -9,12 +9,14 @@
 //          q  pm-nq : xl2   dp[2]
 // ----------------------------------
 
-use std::fmt;
 use crate::pakoo_forest::geo::d_x_line::DXLine;
 use crate::pakoo_forest::geo::x_line::XLine;
 use crate::pakoo_forest::geo::{Ddot, Dot, Line};
+use std::fmt;
 
 // 一对"一对点"
+// 对完全四点形的抽象，p-q；m-n的配对是一种约定
+// 事实上这种初始约定有三种，但各自独立后续性质完全一致，在命令式计算几何里，我们必须约定一种配合方式，而这不影响数学模型正确性
 pub struct Qdot {
     p: Dot,
     q: Dot,
@@ -87,7 +89,6 @@ impl Qdot {
         self.d_dot().line()
     }
 
-
     /// 骈交叉直线
     #[inline]
     pub fn dxl(&self) -> DXLine {
@@ -96,20 +97,23 @@ impl Qdot {
             XLine::from_d4(self.p, self.m, self.n, self.q),
         )
     }
+
+    /// 作为“一对骈点” `{dD1, dD2}` 的无序射影近似相等。
+    #[inline]
+    pub fn approx_eq(&self, other: &Qdot, eps: f64) -> bool {
+        let (a1, a2) = (self.ddot_1(), self.ddot_2());
+        let (b1, b2) = (other.ddot_1(), other.ddot_2());
+        (a1.approx_eq(&b1, eps) && a2.approx_eq(&b2, eps))
+            || (a1.approx_eq(&b2, eps) && a2.approx_eq(&b1, eps))
+    }
 }
-
-
-
 
 impl fmt::Display for Qdot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Qdot:(({} ~ {}) | ({} ~ {}))",
-            self.p,
-            self.q,
-            self.m,
-            self.n,
+            self.p, self.q, self.m, self.n,
         )
     }
 }
@@ -119,12 +123,7 @@ impl fmt::Debug for Qdot {
         write!(
             f,
             "Qdot:(({} ~ {}) | ({} ~ {}))",
-            self.p,
-            self.q,
-            self.m,
-            self.n,
+            self.p, self.q, self.m, self.n,
         )
     }
 }
-
-

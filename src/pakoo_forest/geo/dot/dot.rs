@@ -12,6 +12,7 @@
 use std::fmt;
 
 use crate::pakoo_forest::calc::{Complex, Mat3C, Vec3C};
+use crate::pakoo_forest::geo::conic::Conic;
 use crate::pakoo_forest::geo::line::Line;
 
 /// 齐次点 `(x : y : z)`，定义到整体非零比例。
@@ -73,11 +74,74 @@ impl Dot {
         Some((self.p.v[0] / self.p.v[2], self.p.v[1] / self.p.v[2]))
     }
 
-    // 仿射坐标 实数
+    /// 仿射坐标（实数），要求虚部在容差 `eps` 内可忽略；无穷远或虚点返回 `None`。
+    #[inline]
+    pub fn try_to_affine_f64(&self, eps: f64) -> Option<(f64, f64)> {
+        let (ax, ay) = self.to_affine()?;
+        if !ax.is_finite() || !ay.is_finite() {
+            return None;
+        }
+        let scale = 1.0 + ax.abs().max(ay.abs());
+        if ax.im.abs() > eps * scale || ay.im.abs() > eps * scale {
+            return None;
+        }
+        Some((ax.re, ay.re))
+    }
+    /// 仿射坐标（实数，默认容差 `1e-12`）；无穷远或虚点返回 `None`。
     #[inline]
     pub fn to_affine_f64(&self) -> Option<(f64, f64)> {
-        let (ax, ay) = self.to_affine()?;
-        Some((ax.re, ay.re))
+        self.try_to_affine_f64(1e-12)
+    }
+
+
+    /// 导出实齐次坐标（带去全局复相位与虚部容差检测）；非射影实点或含非有限分量返回 `None`。
+    pub fn try_to_3f64(&self, eps: f64) -> Option<[f64; 3]> {
+        let v = &self.p.v;
+        let mut max_idx = 0usize;
+        let mut max_abs = 0.0f64;
+        for (i, c) in v.iter().enumerate() {
+            if !c.is_finite() {
+                return None;
+            }
+            let a = c.abs();
+            if a > max_abs {
+                max_abs = a;
+                max_idx = i;
+            }
+        }
+        if max_abs == 0.0 {
+            return Some([0.0; 3]);
+        }
+        let tol = eps * max_abs;
+        if v.iter().all(|c| c.im.abs() <= tol) {
+            return Some([v[0].re, v[1].re, v[2].re]);
+        }
+        let phase_conj = v[max_idx].conj().div_f64(max_abs);
+        let mut out = [0.0; 3];
+        for i in 0..3 {
+            let z = v[i] * phase_conj;
+            if z.im.abs() > tol {
+                return None;
+            }
+            out[i] = z.re;
+        }
+        Some(out)
+    }
+
+    /// 仅当点为射影实点（默认容差 `1e-12`）时返回实坐标，否则返回全 `NaN`。
+    #[inline]
+    pub fn to_3f64(&self) -> [f64; 3] {
+        self.try_to_3f64(1e-12).unwrap_or([f64::NAN; 3])
+    }
+
+    /// 嵌入为点圆二次曲线（圆心在 `self`、半径为 0）：
+    /// `(x·z₀ − x₀·z)² + (y·z₀ − y₀·z)² = 0`。
+    #[inline]
+    #[must_use]
+    pub fn as_conic(&self) -> Conic {
+        let (x, y, z) = (self.x(), self.y(), self.z());
+        let z2 = z * z;
+        Conic::new(z2, Complex::ZERO, z2, -x * z, -y * z, x * x + y * y)
     }
 
     /// 齐次分量 `x`。
@@ -110,14 +174,6 @@ impl Dot {
         self.p.v
     }
 
-    ///
-    /// 仅当点为实点（所有分量虚部为 0）时返回实坐标，否则 None。
-    pub fn to_3f64(&self) -> [f64; 3] {
-        if !self.is_real() {
-            return [f64::NAN; 3];
-        }
-        [self.p.v[0].re, self.p.v[1].re, self.p.v[2].re]
-    }
     // ------------------------------------------------------------------
     // 几何运算
     // ------------------------------------------------------------------

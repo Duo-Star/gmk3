@@ -21,6 +21,7 @@ use std::ops::Mul;
 
 use crate::pakoo_forest::calc::{Complex, Cov3C, Vec3C};
 use crate::pakoo_forest::geo::dot::Dot;
+use crate::pakoo_forest::geo::conic::Conic;
 
 /// 齐次直线 `(a : b : c)`，定义到整体非零比例。
 #[derive(Clone, Copy, PartialEq)]
@@ -97,9 +98,53 @@ impl Line {
         self.p.v
     }
 
-    /// 实直线
-    pub const fn to_3f64(self) -> [f64; 3] {
-        [self.p.v[0].re, self.p.v[1].re, self.p.v[2].re]
+
+    /// 导出实齐次直线系数（带去全局复相位与虚部容差检测）；非射影实直线或含非有限分量返回 `None`。
+    pub fn try_to_3f64(self, eps: f64) -> Option<[f64; 3]> {
+        let v = &self.p.v;
+        let mut max_idx = 0usize;
+        let mut max_abs = 0.0f64;
+        for (i, c) in v.iter().enumerate() {
+            if !c.is_finite() {
+                return None;
+            }
+            let a = c.abs();
+            if a > max_abs {
+                max_abs = a;
+                max_idx = i;
+            }
+        }
+        if max_abs == 0.0 {
+            return Some([0.0; 3]);
+        }
+        let tol = eps * max_abs;
+        if v.iter().all(|c| c.im.abs() <= tol) {
+            return Some([v[0].re, v[1].re, v[2].re]);
+        }
+        let phase_conj = v[max_idx].conj().div_f64(max_abs);
+        let mut out = [0.0; 3];
+        for i in 0..3 {
+            let z = v[i] * phase_conj;
+            if z.im.abs() > tol {
+                return None;
+            }
+            out[i] = z.re;
+        }
+        Some(out)
+    }
+
+    /// 实直线系数（默认容差 `1e-12`）；非射影实直线返回全 `NaN`。
+    #[inline]
+    pub fn to_3f64(self) -> [f64; 3] {
+        self.try_to_3f64(1e-12).unwrap_or([f64::NAN; 3])
+    }
+
+    /// 嵌入为二重直线二次曲线：`Q = lᵀ · l`（秩 1）。
+    #[inline]
+    #[must_use]
+    pub fn as_conic(&self) -> Conic {
+        let (a, b, c) = (self.x(), self.y(), self.z());
+        Conic::new(a * a, a * b, b * b, a * c, b * c, c * c)
     }
 
     // ------------------------------------------------------------------

@@ -20,17 +20,6 @@
 //! 单点/点圆、仿射空集（两共轭复平行线）、二重实直线）。
 //! [`Conic::classify`] 按系数是否为实自动分派。
 //!
-//! 判别核心（`Δ∞ = B² − AC`）：
-//!
-//! - 平行型：`r = 2 且 Δ∞ = 0`；交叉型：`r = 2 且 Δ∞ ≠ 0`；
-//! - 圆：`r = 3 且 A = C、B = 0`（过两个虚圆点 `I, J`）；
-//! - 抛物线：`r = 3 且 Δ∞ = 0`（与无穷远直线相切）；
-//! - 横截型：`r = 3、Δ∞ ≠ 0 且非圆`；实系数下 `Δ∞ < 0` 为椭圆、`Δ∞ > 0` 为双曲线；
-//! - 实系数两线相交垂直 / 双曲线等轴：`A + C = 0`。
-//!
-//! 退化实情形（`r = 2`）用主 2×2 子式之和 `M = (AC−B²) + (AF−D²) + (CF−E²)`
-//! （等于两个非零特征值之积）区分不定（两实线）与定号（单点/仿射空集）。
-//!
 //! # 数值路径
 //!
 //! `eps = 0`：精确判零（适合整数/精确构造的输入）；
@@ -42,6 +31,7 @@ use crate::pakoo_forest::calc::{Complex, Mat3C, Vec3C};
 use crate::pakoo_forest::geo::d_dot::Ddot;
 use crate::pakoo_forest::geo::dot::Dot;
 use crate::pakoo_forest::geo::line::Line;
+use crate::pakoo_forest::geo::x_line::XLine;
 
 /// 齐次二次曲线，由对称系数矩阵 `Q` 表示，定义到整体非零比例。
 #[derive(Clone, Copy, PartialEq)]
@@ -108,13 +98,55 @@ impl Conic {
         self.q
     }
 
-    /// [[A, B, D], [B, C, E], [D, E, F]]
-    pub const fn to_3x3f64(self) -> [[f64; 3]; 3] {
-        [
-            [self.q.m[0][0].re, self.q.m[0][1].re, self.q.m[0][2].re],
-            [self.q.m[1][0].re, self.q.m[1][1].re, self.q.m[1][2].re],
-            [self.q.m[2][0].re, self.q.m[2][1].re, self.q.m[2][2].re],
-        ]
+    /// 导出实系数矩阵（带去全局复相位与虚部容差检测）。
+    ///
+    /// 若存在非有限分量或（去相位后）仍有大于 `eps * max_abs` 的虚部，返回 `None`。
+    pub fn try_to_3x3f64(self, eps: f64) -> Option<[[f64; 3]; 3]> {
+        let m = &self.q.m;
+        let mut max_rc = (0usize, 0usize);
+        let mut max_abs = 0.0f64;
+        for (r, row) in m.iter().enumerate() {
+            for (c, v) in row.iter().enumerate() {
+                if !v.is_finite() {
+                    return None;
+                }
+                let a = v.abs();
+                if a > max_abs {
+                    max_abs = a;
+                    max_rc = (r, c);
+                }
+            }
+        }
+        if max_abs == 0.0 {
+            return Some([[0.0; 3]; 3]);
+        }
+        let tol = eps * max_abs;
+        let already_real = m.iter().flatten().all(|v| v.im.abs() <= tol);
+        if already_real {
+            return Some([
+                [m[0][0].re, m[0][1].re, m[0][2].re],
+                [m[1][0].re, m[1][1].re, m[1][2].re],
+                [m[2][0].re, m[2][1].re, m[2][2].re],
+            ]);
+        }
+        let phase_conj = m[max_rc.0][max_rc.1].conj().div_f64(max_abs);
+        let mut out = [[0.0; 3]; 3];
+        for r in 0..3 {
+            for c in 0..3 {
+                let z = m[r][c] * phase_conj;
+                if z.im.abs() > tol {
+                    return None;
+                }
+                out[r][c] = z.re;
+            }
+        }
+        Some(out)
+    }
+
+    /// `[[A, B, D], [B, C, E], [D, E, F]]`（默认容差 `1e-12`；非射影实曲线返回全 `NaN` 矩阵）。
+    #[inline]
+    pub fn to_3x3f64(self) -> [[f64; 3]; 3] {
+        self.try_to_3x3f64(1e-12).unwrap_or([[f64::NAN; 3]; 3])
     }
 
     /// 系数 `A`。
@@ -160,7 +192,7 @@ impl Conic {
         p.p.transpose().dot(qp)
     }
 
-    /// 谓词  点是否在曲线上（与曲线/点的整体缩放无关）。`eps = 0` 时精确判定。
+    /// 谓词：点是否在曲线上（与曲线/点的整体缩放无关）。`eps = 0` 时精确判定。
     #[inline]
     pub fn contains(&self, p: &Dot, eps: f64) -> bool {
         let s = eps * (1.0 + self.q.frobenius_norm() * p.norm() * p.norm());
@@ -198,34 +230,170 @@ impl Conic {
         }
     }
 
+    /// 直线与二次曲线求交，返回骈点 `Ddot`。
+    ///
+    /// 采用 Richter-Gebert 反对称秩-1 分解：
+    /// `B = [l]×ᵀ · Q · [l]×`，取 `M = B + α·[l]×` 使其秩降至 1，
+    /// 则 `M` 的最大模长列与最大模长行即所求两个交点。
+    ///
+    /// 无坐标系与基底选择假设，兼容水平/垂直线、`Line::INF`、迷向直线、切线及超大/超小尺度。
+    /// 若曲线或直线无效（或直线完全包含于退化曲线中），返回含零点的 `Ddot`。
     #[must_use]
     pub fn intersect_line(&self, l: &Line) -> Ddot {
-        let (a, b, c) = (l.x(), l.y(), l.z());
-
-        // 直线 ax+by+cz=0 上的两点：
-        //   P = (-b, a, 0)，R = (-c, 0, a)
-        let p = Dot {
-            p: Vec3C::new(-b, a, Complex::ZERO),
+        let zero = Ddot::from_vec3cs(Vec3C::ZERO, Vec3C::ZERO);
+        let qn = match self.normalize() {
+            Some(n) => n,
+            None => return zero,
         };
-        let r = Dot {
-            p: Vec3C::new(-c, Complex::ZERO, a),
+        let ln = match l.normalize() {
+            Some(n) => n,
+            None => return zero,
         };
 
-        // 限制到直线的二次型系数
-        let qp = self.q.mul_vec(p.p);
-        let qr = self.q.mul_vec(r.p);
-        let aa = p.p.dot(qp.transpose()); // Pᵀ Q P
-        let bb = p.p.dot(qr.transpose()); // Pᵀ Q R
-        let cc = r.p.dot(qr.transpose()); // Rᵀ Q R
+        let lv = Vec3C::from_array(ln.to_array());
+        let lx = Mat3C::from_cross(lv);
+        // [l]×ᵀ = -[l]×，故 B = [l]×ᵀ · Q · [l]× 对称且满足 B·l = 0
+        let b = lx.transpose().mul(&qn.q).mul(&lx);
 
-        // A·u² + 2B·uv + C·v² = 0 的两个参数根：
-        //   (u:v) = (-B ± √(B² − A·C) : A)
-        let s = (bb * bb - aa * cc).sqrt();
-        let x1 = p.p.mul_complex(s - bb).add(r.p.mul_complex(aa));
-        let x2 = p.p.mul_complex(-s - bb).add(r.p.mul_complex(aa));
+        // 选取模长最大的分量 k，避免除零（包括迷向直线 a²+b²+c²=0 情形）
+        let mut k = 0usize;
+        let mut max_l = lv.v[0].abs();
+        for i in 1..3 {
+            let a = lv.v[i].abs();
+            if a > max_l {
+                max_l = a;
+                k = i;
+            }
+        }
+        if max_l == 0.0 || !max_l.is_finite() {
+            return zero;
+        }
 
-        // [Dot { p: x1 }, Dot { p: x2 }]
+        let alpha = (-b.cofactor(k, k)).sqrt() / lv.v[k];
+        let m = b.add(&lx.mul_complex(alpha));
+
+        // 从秩-1 矩阵 M = x1·x2ᵀ 中选取最大模长元，其对应列/行必非零
+        let mut r_max = 0usize;
+        let mut c_max = 0usize;
+        let mut max_m = 0.0f64;
+        for r in 0..3 {
+            for c in 0..3 {
+                let a = m.m[r][c].abs();
+                if a > max_m {
+                    max_m = a;
+                    r_max = r;
+                    c_max = c;
+                }
+            }
+        }
+        if max_m == 0.0 || !max_m.is_finite() {
+            return zero;
+        }
+
+        let x1 = m.col_vec(c_max).normalize().unwrap_or(Vec3C::ZERO);
+        let x2 = m
+            .row_cov(r_max)
+            .transpose()
+            .normalize()
+            .unwrap_or(Vec3C::ZERO);
         Ddot::from_vec3cs(x1, x2)
+    }
+
+    // ------------------------------------------------------------------
+    // 退化类型判断与快速转换（无分支）
+    // ------------------------------------------------------------------
+
+    /// 是否为二重直线（秩 1）。
+    #[inline]
+    pub fn is_line(&self, eps: f64) -> bool {
+        self.rank(eps) == 1
+    }
+
+    /// 按二重直线直接提取直线（不校验秩，调用方保证数学前提）。
+    ///
+    /// 对秩-1 矩阵 `Q = lᵀ·l`，取模长最大行即为 `l`（至多差非零标量）。
+    #[inline]
+    #[must_use]
+    pub fn as_line(&self) -> Line {
+        let mut r_max = 0usize;
+        let mut max_n = 0.0f64;
+        for r in 0..3 {
+            let n = self.q.row_cov(r).norm();
+            if n > max_n {
+                max_n = n;
+                r_max = r;
+            }
+        }
+        self.q
+            .row_cov(r_max)
+            .normalize()
+            .map(Line::from_cov3c)
+            .unwrap_or(Line::from_cov3c(self.q.row_cov(0)))
+    }
+
+    /// 是否为两条相异直线（交叉直线，秩 2）。
+    #[inline]
+    pub fn is_xline(&self, eps: f64) -> bool {
+        self.rank(eps) == 2
+    }
+
+    /// 按退化两直线直接分解为 `XLine`（不强制校验，失败时返回零 `XLine`）。
+    #[inline]
+    #[must_use]
+    pub fn as_xline(&self) -> XLine {
+        let (l1, l2) = self.decompose_lines(1e-12).unwrap_or((
+            Line::new(Complex::ZERO, Complex::ZERO, Complex::ZERO),
+            Line::new(Complex::ZERO, Complex::ZERO, Complex::ZERO),
+        ));
+        XLine::new(l1, l2)
+    }
+
+    /// 是否为单点/点圆（射影实系数、秩 2、非平行且半定：实轨迹为唯一有限点）。
+    #[inline]
+    pub fn is_dot(&self, eps: f64) -> bool {
+        if self.rank(eps) != 2 {
+            return false;
+        }
+        let qn = if eps == 0.0 {
+            *self
+        } else {
+            match self.normalize() {
+                Some(n) => n,
+                None => return false,
+            }
+        };
+        let real_m = match qn.try_to_3x3f64(eps) {
+            Some(m) => m,
+            None => return false,
+        };
+        let (a, b, c) = (real_m[0][0], real_m[0][1], real_m[1][1]);
+        let (d, e, f) = (real_m[0][2], real_m[1][2], real_m[2][2]);
+        let delta = b * b - a * c;
+        if delta.abs() <= eps {
+            return false;
+        }
+        let m = (a * c - b * b) + (a * f - d * d) + (c * f - e * e);
+        m > eps
+    }
+
+    /// 提取退化二次曲线的唯一奇异点（对“单点/点圆”即该点本身，对“交叉直线”即其交点；不校验秩）。
+    ///
+    /// 对秩-2 矩阵 `Q`，`adj(Q) ∝ p·pᵀ`，取 `adj(Q)` 模长最大列即为核向量 `p`。
+    #[inline]
+    #[must_use]
+    pub fn as_dot(&self) -> Dot {
+        let adj = self.q.adjugate();
+        let mut c_max = 0usize;
+        let mut max_n = 0.0f64;
+        for c in 0..3 {
+            let n = adj.col_vec(c).norm();
+            if n > max_n {
+                max_n = n;
+                c_max = c;
+            }
+        }
+        let v = adj.col_vec(c_max);
+        Dot::from_vec3c(v.normalize().unwrap_or(v))
     }
 
     // ------------------------------------------------------------------
@@ -297,9 +465,6 @@ impl Conic {
     }
 
     /// 矩阵秩（0..=3）。`eps = 0` 精确判定；`eps > 0` 归一化后容差判定。
-    /// rank(C)=3   非退化
-    /// ..=2   两条相异直线
-    /// ..=1   重合直线
     #[inline]
     pub fn rank(&self, eps: f64) -> usize {
         let q = &self.q;
@@ -350,9 +515,7 @@ impl Conic {
         (a - c).abs() <= eps && b.abs() <= eps
     }
 
-    /// 射影意义相等：`Q` 与 `Q'` 的 9 个分量为行构成的
-    /// 与整体缩放无关
-    /// 2×9 矩阵全部 2×2 子式消失
+    /// 射影意义相等：`Q` 与 `Q'` 的 9 个分量构成的 2×9 矩阵全部 2×2 子式消失。
     /// `eps = 0` 时精确判定。
     #[inline]
     pub fn approx_eq(&self, other: &Conic, eps: f64) -> bool {
@@ -396,7 +559,6 @@ impl fmt::Display for Conic {
             self.d(),
             self.e(),
             self.f(),
-            // self.classify(1e-12)
         )
     }
 }
@@ -404,5 +566,92 @@ impl fmt::Display for Conic {
 impl fmt::Debug for Conic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")
+    }
+}
+
+#[cfg(test)]
+mod stage1_conic_tests {
+    use super::Conic;
+    use crate::pakoo_forest::calc::Complex;
+    use crate::pakoo_forest::geo::dot::Dot;
+    use crate::pakoo_forest::geo::line::Line;
+    use crate::pakoo_forest::geo::x_line::XLine;
+
+    const EPS: f64 = 1e-11;
+
+    #[test]
+    fn intersect_line_all_axes_and_edge_cases() {
+        let unit = Conic::UNIT_CIRCLE;
+
+        // X 轴 (0:1:0)
+        let dx = unit.intersect_line(&Line::X_AXIS);
+        assert!(unit.contains(&dx.p(), EPS) && unit.contains(&dx.q(), EPS));
+        assert!(Line::X_AXIS.contains(&dx.p(), EPS) && Line::X_AXIS.contains(&dx.q(), EPS));
+
+        // Y 轴 (1:0:0)
+        let dy = unit.intersect_line(&Line::Y_AXIS);
+        assert!(unit.contains(&dy.p(), EPS) && unit.contains(&dy.q(), EPS));
+        assert!(Line::Y_AXIS.contains(&dy.p(), EPS) && Line::Y_AXIS.contains(&dy.q(), EPS));
+
+        // 无穷远直线 (0:0:1) → 虚圆点 {I, J}
+        let dinf = unit.intersect_line(&Line::INF);
+        assert!(dinf.contains(&Dot::I, EPS) && dinf.contains(&Dot::J, EPS));
+
+        // 相切：x = 1 → (1:0:1) 重根
+        let tan_l = Line::from_f64s(1.0, 0.0, -1.0);
+        let dtan = unit.intersect_line(&tan_l);
+        assert!(dtan.contains(&Dot::from_f64s(1.0, 0.0, 1.0), EPS));
+
+        // 相离：y = 2 → ( ±i√3 : 2 : 1 )
+        let far_l = Line::from_f64s(0.0, 1.0, -2.0);
+        let dfar = unit.intersect_line(&far_l);
+        assert!(unit.contains(&dfar.p(), EPS) && unit.contains(&dfar.q(), EPS));
+        assert!(far_l.contains(&dfar.p(), EPS) && far_l.contains(&dfar.q(), EPS));
+
+        // 迷向直线 x + iy = 0 与圆相交
+        let iso = Line::new(Complex::ONE, Complex::I, Complex::ZERO);
+        let diso = unit.intersect_line(&iso);
+        assert!(unit.contains(&diso.p(), EPS) && unit.contains(&diso.q(), EPS));
+        assert!(iso.contains(&diso.p(), EPS) && iso.contains(&diso.q(), EPS));
+    }
+
+    #[test]
+    fn conic_dot_line_xline_conversions() {
+        // Line <-> Conic
+        let l = Line::from_f64s(2.0, -3.0, 5.0);
+        let lc = l.as_conic();
+        assert!(lc.is_line(EPS));
+        assert!(lc.as_line().approx_eq(&l, EPS));
+
+        // Dot <-> Conic (点圆)
+        let p = Dot::from_f64s(3.0, -4.0, 2.0);
+        let pc = p.as_conic();
+        assert!(pc.is_dot(EPS));
+        assert!(pc.as_dot().p.cross(p.p).norm() <= EPS);
+
+        // XLine <-> Conic
+        let l1 = Line::from_f64s(1.0, 2.0, -3.0);
+        let l2 = Line::from_f64s(4.0, -1.0, 2.0);
+        let xl = XLine::new(l1, l2);
+        let xlc = xl.as_conic();
+        assert!(xlc.is_xline(EPS));
+        assert!(xlc.as_xline().approx_eq(&xl, EPS));
+        assert!(xlc.as_dot().p.cross(xl.center().p).norm() <= EPS);
+
+        // 去相位实导出
+        let phased = Conic::UNIT_CIRCLE.scaled(Complex::I);
+        let mat = phased.try_to_3x3f64(EPS).unwrap();
+        assert!((mat[0][0] - 1.0).abs() < EPS);
+        assert!((mat[2][2] + 1.0).abs() < EPS);
+
+        let truly_complex = Conic::new(
+            Complex::ONE,
+            Complex::I,
+            Complex::ONE,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::NEG_ONE,
+        );
+        assert!(truly_complex.try_to_3x3f64(EPS).is_none());
     }
 }

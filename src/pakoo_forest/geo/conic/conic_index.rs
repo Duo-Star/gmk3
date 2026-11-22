@@ -636,4 +636,116 @@ impl Conic {
     pub fn param_of(&self, p: &Dot, eps: f64) -> Option<Complex> {
         self.parametrization(eps).param_of(p)
     }
+
+    /// 将（退化）二次曲线分解为两条单位直线（`r = 2` 给相异两线，`r = 1` 给二重直线）。
+    ///
+    /// 采用与 [`Conic::parametrization`] 一致的对称合同对角化流程，
+    /// 供 `Conic::as_xline` 复用。
+    pub(super) fn decompose_lines(&self, eps: f64) -> Option<(Line, Line)> {
+        if !self.is_finite() {
+            return None;
+        }
+        let qn = self.normalize()?;
+        let mut a = qn.q.add(&qn.q.transpose()).mul_f64(0.5).m;
+        let mut m = Mat3C::IDENTITY.m;
+        let mut m_inv = Mat3C::IDENTITY.m;
+
+        // ---- 第 1 步合同消除 ----
+        let mut pd = 0;
+        let mut md = a[0][0].abs();
+        for i in 1..3 {
+            let v = a[i][i].abs();
+            if v > md {
+                md = v;
+                pd = i;
+            }
+        }
+        let off_pairs = [(0usize, 1usize), (0, 2), (1, 2)];
+        let (mut pi, mut pj) = (0, 1);
+        let mut mo = a[0][1].abs();
+        for &(i, j) in &off_pairs[1..] {
+            let v = a[i][j].abs();
+            if v > mo {
+                mo = v;
+                pi = i;
+                pj = j;
+            }
+        }
+        if md == 0.0 && mo == 0.0 {
+            return None;
+        }
+        if md >= 0.5 * mo {
+            diag_swap(&mut a, &mut m, &mut m_inv, 0, pd);
+        } else {
+            match (pi, pj) {
+                (0, 1) => {}
+                (0, 2) => diag_swap(&mut a, &mut m, &mut m_inv, 1, 2),
+                _ => {
+                    diag_swap(&mut a, &mut m, &mut m_inv, 0, 1);
+                    diag_swap(&mut a, &mut m, &mut m_inv, 1, 2);
+                }
+            }
+            diag_rot45(&mut a, &mut m, &mut m_inv, 0, 1);
+        }
+
+        let d0 = a[0][0];
+        if d0.is_zero() || !d0.is_finite() {
+            return None;
+        }
+        let l1 = -a[0][1] / d0;
+        let l2 = -a[0][2] / d0;
+        a[1][1] += l1 * a[0][1];
+        a[1][2] += l1 * a[0][2];
+        a[2][1] = a[1][2];
+        a[2][2] += l2 * a[0][2];
+        for k in 0..3 {
+            m_inv[0][k] -= l1 * m_inv[1][k] + l2 * m_inv[2][k];
+        }
+
+        // ---- 第 2 步合同消除 ----
+        let md2 = a[1][1].abs().max(a[2][2].abs());
+        let mo2 = a[1][2].abs();
+        if (md2 == 0.0 && mo2 == 0.0) || (eps > 0.0 && md2 <= eps && mo2 <= eps) {
+            let line = Line::from_cov3c(Mat3C::new(m_inv).row_cov(0)).normalize()?;
+            return Some((line, line));
+        }
+        if md2 >= 0.5 * mo2 {
+            if a[2][2].abs() > a[1][1].abs() {
+                diag_swap(&mut a, &mut m, &mut m_inv, 1, 2);
+            }
+        } else {
+            diag_rot45(&mut a, &mut m, &mut m_inv, 1, 2);
+        }
+
+        let d1 = a[1][1];
+        if d1.is_zero() || !d1.is_finite() || (eps > 0.0 && d1.abs() <= eps) {
+            let line = Line::from_cov3c(Mat3C::new(m_inv).row_cov(0)).normalize()?;
+            return Some((line, line));
+        }
+
+        // 补回第 2 步消元对 m_inv 第 1 行的更新
+        let l12 = -a[1][2] / d1;
+        for k in 0..3 {
+            m_inv[1][k] -= l12 * m_inv[2][k];
+        }
+
+        let mut d_pair = [d0, d1, Complex::ZERO];
+        let is_real_pair = phase_clean_real_diag(&mut d_pair, self.is_real());
+        let (a0, b0) = if is_real_pair && d_pair[0].re * d_pair[1].re < 0.0 {
+            if d_pair[0].re < 0.0 {
+                ((-d_pair[0]).sqrt(), d_pair[1].sqrt())
+            } else {
+                (d_pair[0].sqrt(), (-d_pair[1]).sqrt())
+            }
+        } else {
+            (d_pair[0].sqrt(), Complex::I * d_pair[1].sqrt())
+        };
+
+        let mi = Mat3C::new(m_inv);
+        let r0 = mi.row_cov(0);
+        let r1 = mi.row_cov(1);
+        let line1 = Line::from_cov3c(r0.mul_complex(a0).add(r1.mul_complex(b0))).normalize()?;
+        let line2 = Line::from_cov3c(r0.mul_complex(a0).sub(r1.mul_complex(b0))).normalize()?;
+        Some((line1, line2))
+    }
 }

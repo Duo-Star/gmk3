@@ -10,7 +10,7 @@ fn se() -> AppCreator<'static> {
         Ok(Box::new(Gmk3App::new(cc, |p: &mut Plotter| {
             let t = p.t();
 
-            let c = Conic::from_f64s(1.0, 3.0*(0.2*t).sin(), 1.0, 0.0, 0.0, -1.0);
+            let c = Conic::from_f64s(1.0, 0.0, 0.0, 0.0, -1.0, -1.0);
             let d = Dot::from_f64s(1.0+(0.2*t).sin(),0.0+(0.2*t).cos(),1.0);
             let l = c.polar(&d);
             let dp = c.intersect_line(&l);
