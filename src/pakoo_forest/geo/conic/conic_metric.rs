@@ -71,6 +71,7 @@ const L_INF_SQR: Mat3C = Mat3C::new([
 ]);
 
 #[inline]
+#[allow(dead_code)]
 fn dot_to_line_coords(p: &Dot) -> Line {
     Line::new(p.x(), p.y(), p.z())
 }
@@ -437,7 +438,7 @@ impl Conic {
         };
 
         let m = &q_dual.m;
-        let (u00, u01, u02) = (m[0][0], m[0][1], m[0][2]);
+        let (u00, _u01, u02) = (m[0][0], m[0][1], m[0][2]);
         let (u11, u12, u22) = (m[1][1], m[1][2], m[2][2]);
 
         let c2 = u22;

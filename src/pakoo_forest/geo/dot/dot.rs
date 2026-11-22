@@ -65,6 +65,11 @@ impl Dot {
         Dot::new(x, y, Complex::ONE)
     }
 
+    #[inline]
+    pub fn from_affine_f64(x: f64, y: f64) -> Dot {
+        Dot::new(Complex::from(x), Complex::from(y), Complex::ONE)
+    }
+
     /// 仿射坐标 `(x/z, y/z)`；无穷远点（`z == 0`）无仿射坐标，返回 `None`。
     #[inline]
     pub fn to_affine(&self) -> Option<(Complex, Complex)> {
