@@ -1,4 +1,7 @@
+// src/pakoo_forest/geo/conic/conic_classify.rs
+
 use crate::pakoo_forest::geo::Conic;
+use crate::pakoo_forest::geo::conic::tools::schur_complement;
 
 impl Conic {
     // ------------------------------------------------------------------
@@ -102,8 +105,7 @@ impl Conic {
                     } else {
                         (a, b, c, d, e, f)
                     };
-                    let s =
-                        crate::pakoo_forest::geo::conic::schur_complement(a2, b2, c2, d2, e2, f2);
+                    let s = schur_complement(a2, b2, c2, d2, e2, f2);
                     if s < -eps {
                         "实圆"
                     } else if s > eps {
@@ -120,8 +122,7 @@ impl Conic {
                     } else {
                         (a, b, c, d, e, f)
                     };
-                    let s =
-                        crate::pakoo_forest::geo::conic::schur_complement(a2, b2, c2, d2, e2, f2);
+                    let s = schur_complement(a2, b2, c2, d2, e2, f2);
                     if s < -eps {
                         "实椭圆"
                     } else if s > eps {

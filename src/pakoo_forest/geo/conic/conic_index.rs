@@ -1,5 +1,6 @@
-use crate::pakoo_forest::geo::Conic;
+// src/pakoo_forest/geo/conic/conic_index.rs
 
+use crate::pakoo_forest::geo::Conic;
 
 use crate::pakoo_forest::calc::{Complex, Mat3C, Vec3C};
 use crate::pakoo_forest::geo::dot::Dot;
@@ -297,7 +298,6 @@ fn diag_rot45(
     }
 }
 
-
 #[inline]
 fn line_basis_pair(line: Line) -> Option<(Vec3C, Vec3C)> {
     let (a, b, c) = (line.x(), line.y(), line.z());
@@ -469,84 +469,81 @@ impl Conic {
         }
 
         let strict_real = self.is_real();
-        let make_two_lines =
-            |d0: Complex,
-             d1: Complex,
-             m: &[[Complex; 3]; 3],
-             m_inv: &[[Complex; 3]; 3]|
-             -> ConicParam {
-                let mut d_pair = [d0, d1, Complex::ZERO];
-                let is_real_pair = phase_clean_real_diag(&mut d_pair, strict_real);
-                let (a0, b0) = if is_real_pair && d_pair[0].re * d_pair[1].re < 0.0 {
-                    if d_pair[0].re < 0.0 {
-                        ((-d_pair[0]).sqrt(), d_pair[1].sqrt())
-                    } else {
-                        (d_pair[0].sqrt(), (-d_pair[1]).sqrt())
-                    }
+        let make_two_lines = |d0: Complex,
+                              d1: Complex,
+                              m: &[[Complex; 3]; 3],
+                              m_inv: &[[Complex; 3]; 3]|
+         -> ConicParam {
+            let mut d_pair = [d0, d1, Complex::ZERO];
+            let is_real_pair = phase_clean_real_diag(&mut d_pair, strict_real);
+            let (a0, b0) = if is_real_pair && d_pair[0].re * d_pair[1].re < 0.0 {
+                if d_pair[0].re < 0.0 {
+                    ((-d_pair[0]).sqrt(), d_pair[1].sqrt())
                 } else {
-                    (d_pair[0].sqrt(), Complex::I * d_pair[1].sqrt())
-                };
-                let mi = Mat3C::new(*m_inv);
-                let r0 = mi.row_cov(0);
-                let r1 = mi.row_cov(1);
-                let line1 = match Line::from_cov3c(r0.mul_complex(a0).add(r1.mul_complex(b0)))
-                    .normalize()
-                {
+                    (d_pair[0].sqrt(), (-d_pair[1]).sqrt())
+                }
+            } else {
+                (d_pair[0].sqrt(), Complex::I * d_pair[1].sqrt())
+            };
+            let mi = Mat3C::new(*m_inv);
+            let r0 = mi.row_cov(0);
+            let r1 = mi.row_cov(1);
+            let line1 =
+                match Line::from_cov3c(r0.mul_complex(a0).add(r1.mul_complex(b0))).normalize() {
                     Some(l) => l,
                     None => return INVALID,
                 };
-                let line2 = match Line::from_cov3c(r0.mul_complex(a0).sub(r1.mul_complex(b0)))
-                    .normalize()
-                {
+            let line2 =
+                match Line::from_cov3c(r0.mul_complex(a0).sub(r1.mul_complex(b0))).normalize() {
                     Some(l) => l,
                     None => return INVALID,
                 };
-                let mut p0 = match Mat3C::new(*m).col_vec(2).normalize() {
+            let mut p0 = match Mat3C::new(*m).col_vec(2).normalize() {
+                Some(v) => v,
+                None => return INVALID,
+            };
+            if p0.v[2].re < 0.0 {
+                p0 = p0.neg();
+            }
+
+            let (q1, q2) = if p0.v[2].abs() > 1e-6 {
+                // 交点在有限处：取各自无穷远点，使 (-∞,-1), (-1,0), (0,1), (1,+∞) 恰好为四条欧氏射线
+                let q1 = match line1.inf_point().p.normalize() {
                     Some(v) => v,
                     None => return INVALID,
                 };
-                if p0.v[2].re < 0.0 {
-                    p0 = p0.neg();
-                }
-
-                let (q1, q2) = if p0.v[2].abs() > 1e-6 {
-                    // 交点在有限处：取各自无穷远点，使 (-∞,-1), (-1,0), (0,1), (1,+∞) 恰好为四条欧氏射线
-                    let q1 = match line1.inf_point().p.normalize() {
-                        Some(v) => v,
-                        None => return INVALID,
-                    };
-                    let q2 = match line2.inf_point().p.normalize() {
-                        Some(v) => v,
-                        None => return INVALID,
-                    };
-                    (q1, q2)
-                } else {
-                    // 平行或近平行：取 Hermite 正交锚点，避开无穷远处的奇异抵消
-                    let p0_conj = p0.conj();
-                    let l1_col = Vec3C::from_array(line1.to_array());
-                    let l2_col = Vec3C::from_array(line2.to_array());
-                    let q1 = match p0_conj.cross(l1_col).normalize() {
-                        Some(v) => v,
-                        None => return INVALID,
-                    };
-                    let q2 = match p0_conj.cross(l2_col).normalize() {
-                        Some(v) => v,
-                        None => return INVALID,
-                    };
-                    (q1, q2)
+                let q2 = match line2.inf_point().p.normalize() {
+                    Some(v) => v,
+                    None => return INVALID,
                 };
-
-                ConicParam {
-                    kind: ConicParamKind::TwoLines,
-                    repr: ParamRepr::TwoLines {
-                        p0,
-                        q1,
-                        q2,
-                        l1: line1,
-                        l2: line2,
-                    },
-                }
+                (q1, q2)
+            } else {
+                // 平行或近平行：取 Hermite 正交锚点，避开无穷远处的奇异抵消
+                let p0_conj = p0.conj();
+                let l1_col = Vec3C::from_array(line1.to_array());
+                let l2_col = Vec3C::from_array(line2.to_array());
+                let q1 = match p0_conj.cross(l1_col).normalize() {
+                    Some(v) => v,
+                    None => return INVALID,
+                };
+                let q2 = match p0_conj.cross(l2_col).normalize() {
+                    Some(v) => v,
+                    None => return INVALID,
+                };
+                (q1, q2)
             };
+
+            ConicParam {
+                kind: ConicParamKind::TwoLines,
+                repr: ParamRepr::TwoLines {
+                    p0,
+                    q1,
+                    q2,
+                    l1: line1,
+                    l2: line2,
+                },
+            }
+        };
 
         if rank == 2 || d2.is_zero() || !d2.is_finite() {
             return make_two_lines(d0, d1, &m, &m_inv);

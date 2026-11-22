@@ -1,4 +1,5 @@
-// src/pakoo_forest/geo/conic.rs
+// src/pakoo_forest/geo/conic/conic.rs
+//
 //! 二次曲线（圆锥曲线）`Conic` —— 对称 3×3 复矩阵 `Q` 的 Newtype。
 //!
 //! 方程（齐次）：
@@ -41,15 +42,6 @@ use crate::pakoo_forest::calc::{Complex, Mat3C, Vec3C};
 use crate::pakoo_forest::geo::d_dot::Ddot;
 use crate::pakoo_forest::geo::dot::Dot;
 use crate::pakoo_forest::geo::line::Line;
-
-/// Schur 补 `S = F − (C·D² − 2·B·D·E + A·E²)/(A·C − B²)`。
-///
-/// 仅当 `Δ∞ = B² − AC < 0`（`Q∞` 正定或负定）时有意义；
-/// 调用方需先按 `Q∞ > 0` 归一化（`A < 0` 时整体乘 `−1`）。
-#[inline]
-pub fn schur_complement(a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) -> f64 {
-    f - (c * d * d - 2.0 * b * d * e + a * e * e) / (a * c - b * b)
-}
 
 /// 齐次二次曲线，由对称系数矩阵 `Q` 表示，定义到整体非零比例。
 #[derive(Clone, Copy, PartialEq)]
@@ -380,7 +372,6 @@ impl Conic {
         }
         true
     }
-
 }
 
 impl Default for Conic {
@@ -398,14 +389,14 @@ impl fmt::Display for Conic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Conic:(A: {}, B: {}, C: {}, D: {}, E: {}, F: {} ||| `{}`)",
+            "Conic:(A: {}, B: {}, C: {}, D: {}, E: {}, F: {})",
             self.a(),
             self.b(),
             self.c(),
             self.d(),
             self.e(),
             self.f(),
-            self.classify(1e-12)
+            // self.classify(1e-12)
         )
     }
 }

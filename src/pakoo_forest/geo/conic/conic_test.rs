@@ -1,3 +1,4 @@
+// src/pakoo_forest/geo/conic/conic_test.rs
 // ---------------------------------------------------------------------------
 // Conic 单元测试
 // ---------------------------------------------------------------------------
@@ -5,7 +6,7 @@
 mod tests {
     use crate::pakoo_forest::calc::{Complex, Mat3C};
     use crate::pakoo_forest::geo::Conic;
-    use crate::pakoo_forest::geo::conic_index::ConicParamKind;
+    use crate::pakoo_forest::geo::conic::conic_index::ConicParamKind;
     use crate::pakoo_forest::geo::{Dot, Line};
 
     const EPS: f64 = 1e-12;
@@ -99,7 +100,10 @@ mod tests {
         let t = unit.tangent_or_not(&p, 0.0).unwrap();
         assert!(t.approx_eq(&l, 0.0));
         // 不在曲线上的点无切线
-        assert_eq!(unit.tangent_or_not(&Dot::from_f64s(2.0, 0.0, 1.0), 0.0), None);
+        assert_eq!(
+            unit.tangent_or_not(&Dot::from_f64s(2.0, 0.0, 1.0), 0.0),
+            None
+        );
         // 圆心的极线是无穷远直线
         let center = Dot::ZERO; // (0:0:1)
         assert!(unit.polar(&center).approx_eq(&Line::INF, 0.0));
@@ -202,7 +206,7 @@ mod tests {
                 Complex::ZERO,
                 Complex::ZERO
             )
-                .classify_complex(0.0),
+            .classify_complex(0.0),
             "无效型"
         );
     }
@@ -364,7 +368,7 @@ mod tests {
                 Complex::ZERO,
                 Complex::ZERO
             )
-                .is_real()
+            .is_real()
         );
         assert!(Conic::UNIT_CIRCLE.is_finite());
         assert!(
@@ -376,15 +380,15 @@ mod tests {
                 Complex::ZERO,
                 Complex::ZERO
             )
-                .is_finite()
+            .is_finite()
         );
         assert_eq!(
             Conic::UNIT_CIRCLE.to_string(),
-            "Conic(A: 1, B: 0, C: 1, D: 0, E: 0, F: -1)"
+            "Conic:(A: 1, B: 0, C: 1, D: 0, E: 0, F: -1)"
         );
         assert_eq!(
             format!("{:?}", Conic::ZERO),
-            "Conic(A: 0, B: 0, C: 0, D: 0, E: 0, F: 0)"
+            "Conic:(A: 0, B: 0, C: 0, D: 0, E: 0, F: 0)"
         );
     }
 
@@ -392,7 +396,18 @@ mod tests {
 
     #[test]
     fn param_nonsingular_real_conics() {
-        let params = [-100.0, -2.5, -1.0, -0.3, 0.0, 0.4, 1.0, 3.7, 1e8, f64::INFINITY];
+        let params = [
+            -100.0,
+            -2.5,
+            -1.0,
+            -0.3,
+            0.0,
+            0.4,
+            1.0,
+            3.7,
+            1e8,
+            f64::INFINITY,
+        ];
 
         // 1. 单位圆
         let circle = Conic::UNIT_CIRCLE;
@@ -557,7 +572,10 @@ mod tests {
         assert!(inf2.contains(&ip.point_at_f64(0.3), EPS));
 
         // 3. 零型与极端缩放稳定性
-        assert_eq!(Conic::ZERO.parametrization(EPS).kind(), ConicParamKind::Invalid);
+        assert_eq!(
+            Conic::ZERO.parametrization(EPS).kind(),
+            ConicParamKind::Invalid
+        );
         assert!(Conic::ZERO.point_at_f64(0.5, EPS).is_zero());
 
         let huge = Conic::UNIT_CIRCLE.scaled(c(1e150, 0.0));

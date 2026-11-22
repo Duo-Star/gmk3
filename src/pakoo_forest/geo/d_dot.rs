@@ -1,3 +1,5 @@
+// src/pakoo_forest/geo/d_dot.rs
+
 use crate::pakoo_forest::calc::Vec3C;
 use crate::pakoo_forest::geo::{Dot, Line};
 use std::fmt;

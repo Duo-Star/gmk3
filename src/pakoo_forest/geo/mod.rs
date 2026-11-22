@@ -22,20 +22,26 @@
 //!   平行判定 [`Line::is_pall`] 由无穷远直线定义，垂直判定 [`Line::is_vert`]
 //!   由两个虚圆点定义（无穷远点与虚圆点构成调和四点）。
 
+/// 
+pub mod dot;
+
+/// 
+pub mod line;
+
+///
 pub mod conic;
+
+
+
 pub mod d_dot;
 pub mod d_x_line;
-pub mod dot;
-pub mod line;
+
 pub mod q_dot;
 pub mod x_line;
-pub mod conic_index;
-pub mod conic_test;
-pub mod conic_classify;
 
-pub use conic::Conic;
 pub use dot::Dot;
 pub use line::Line;
+pub use conic::Conic;
 //
 pub use d_dot::Ddot;
 // pub use d_x_line::DXLine;
