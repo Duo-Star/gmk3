@@ -21,14 +21,21 @@
 // 不需要解 $6\times 6$ 线性方程组！取前四点组成两条退化直线对 $Q_1 = (P_1 P_2)\cup(P_3 P_4)$ 与 $Q_2 = (P_1 P_3)\cup(P_2 P_4)$，任意过这四点的曲线都在铅笔 $\lambda Q_1 + \mu Q_2$ 中，代入第五点立即得出：
 // $$Q = (P_5^T Q_2 P_5)\,Q_1 - (P_5^T Q_1 P_5)\,Q_2$$
 // 仅需 4 次叉积 + 2 次外积 + 2 次求值，全纯复数精确成立，且若 3 点共线会自动退化为该直线与另两点连线的并。
+//
 // 2. **五切线定圆锥曲线（`conic_from_5_lines`）**：
 // **完全可行，而且几乎零代码成本！** 根据射影对偶性，把 5 条 `Line` 当作对偶平面上的 5 个“点”套用完全相同的铅笔公式得到对偶矩阵 $Q^*$，再取一次伴随矩阵 $Q = \text{adj}(Q^*)$ 即得原切线二次曲线（不需要求逆与除行列式）。
+//
 // 3. **已知渐近线 `XLine` + 曲线上一点 `Dot`**：
 // 非常自然，而且**只用 1 行铅笔公式**：
 // 实交叉直线对应双曲线，共轭复交叉直线对应椭圆，一般复交叉直线对应一般复横截二次曲线——它们全都在由 `asy.as_conic()` 与二重无穷远直线 $z^2 = 0$ 张成的线性铅笔中：
 // $$Q = P_z^2\, Q_{\text{asy}} - (P^T Q_{\text{asy}} P)\, (L_\infty^T L_\infty)$$
+//
 // 4. **中心 + 两个共轭直径代表点**：
-// **你的直觉完全正确，必须区分椭圆型（$+1$）和双曲线型（$-1$）**（或者传一个复系数 $s \in \mathbb{C}$）。原因在于：若中心为 $O$、两共轭半直径向量为 $u, v$，在仿射基 $\{O; u, v\}$ 下，椭圆方程是 $\xi^2 + \eta^2 = 1$（$P_1, P_2$ 都在曲线上），而双曲线方程是 $\xi^2 - \eta^2 = 1$（$P_1$ 在本曲线上，$P_2$ 在**共轭双曲线**上，即 $O + i v$ 才在原复双曲线上）。用齐次基矩阵 $M$ 和伴随变换 $Q = \text{adj}(M)^T \text{diag}(1, s, -1)\, \text{adj}(M)$ 即可无除法统一覆盖 $s = +1$（椭圆）、$s = -1$（双曲线）乃至任意复 $s$。
+// **你的直觉完全正确，必须区分椭圆型（$+1$）和双曲线型（$-1$）**（或者传一个复系数 $s \in \mathbb{C}$）。
+// 原因在于：若中心为 $O$、两共轭半直径向量为 $u, v$，在仿射基 $\{O; u, v\}$ 下，
+// 椭圆方程是 $\xi^2 + \eta^2 = 1$（$P_1, P_2$ 都在曲线上），而双曲线方程是 $\xi^2 - \eta^2 = 1$（$P_1$ 在本曲线上，$P_2$ 在**共轭双曲线**上，即 $O + i v$ 才在原复双曲线上）。
+// 用齐次基矩阵 $M$ 和伴随变换 $Q = \text{adj}(M)^T \text{diag}(1, s, -1)\, \text{adj}(M)$ 即可无除法统一覆盖 $s = +1$（椭圆）、$s = -1$（双曲线）乃至任意复 $s$。
+//
 // 5. **两焦点 + 曲线上一点**：
 // 同样**必须区分椭圆与双曲线**（在欧氏几何与复几何中，过同一点 $P$ 且共焦 $F_1, F_2$ 的曲线恰好有一条椭圆和一条双曲线，它们互为正交共焦族！）。
 // 并且不管用 `Ddot` 还是独立两点 `(f1, f2)`，公式对 $F_1, F_2$ 完全对称无序：用复距离算出 $\lambda = \frac{1}{4}\big((d_1 \pm d_2)^2 - d_{12}^2\big)$，代入对偶共焦铅笔 $Q^*(\lambda) = -\frac{1}{2}(F_1 F_2^T + F_2 F_1^T) + \lambda z_1 z_2 C_\infty^*$ 再取伴随矩阵，直接得精确曲线（包括两焦点为共轭虚点时也能反向重构出椭圆，两焦点重合时退化为圆！）。
@@ -45,7 +52,6 @@
 //
 // #### 3. 为什么“每个主直径只交一点的 `Ddot`”必然跳变？
 // 这是个纯拓扑障碍（$\pi$-单值性 / spin-$1/2$ 截面问题）：当椭圆连续旋转 $90^\circ$ 或退化经过圆时，无状态的纯函数 `Conic -> Ddot` 在 $\mathbb{RP}^1$ 上无法做到全局无跳变地从每根主轴挑出“唯一一侧”的顶点。因此像你判断的那样，内核保留无对称破缺的 `conic_axes(&self) -> XLine` 和 `conic_vertices(&self) -> Qdot`（每条主直径各取一个 `Ddot`，共 4 个顶点组成 `Qdot`），把状态连续性（按上一帧就近追踪）留给上层 UI（如果需要的话），性能与数学干净度最优。
-
 
 use crate::pakoo_forest::calc::{Complex, Mat3C, Vec3C};
 use crate::pakoo_forest::geo::conic::Conic;
@@ -84,7 +90,11 @@ fn line_to_dot_coords(l: &Line) -> Dot {
 /// 求解二次方程 `c2·λ² + c1·λ + c0 = 0` 的两个齐次根 `(λ_num, λ_den)`，
 /// 满足 `λ_den·M − λ_num·C∞*` 对 `c2 → 0`（抛物线）平滑无除零。
 #[inline]
-fn solve_quadratic_homogeneous(c2: Complex, c1: Complex, c0: Complex) -> ((Complex, Complex), (Complex, Complex)) {
+fn solve_quadratic_homogeneous(
+    c2: Complex,
+    c1: Complex,
+    c0: Complex,
+) -> ((Complex, Complex), (Complex, Complex)) {
     let disc = (c1 * c1 - c2 * c0.mul_f64(4.0)).sqrt();
     let s = if (c1.conj() * disc).re >= 0.0 {
         c1 + disc
@@ -118,6 +128,7 @@ fn conic_from_confocal_lambda(f1: Dot, f2: Dot, lambda: Complex) -> Conic {
     q.normalize().unwrap_or(q)
 }
 
+//
 impl Conic {
     // ------------------------------------------------------------------
     // 通用构造器
@@ -181,7 +192,10 @@ impl Conic {
         let q_pt = fn_.as_conic();
         let q_ln = ln.as_conic();
         let out = Conic {
-            q: q_pt.q.mul_complex(ab2).sub(&q_ln.q.mul_complex(ecc * ecc * zf2)),
+            q: q_pt
+                .q
+                .mul_complex(ab2)
+                .sub(&q_ln.q.mul_complex(ecc * ecc * zf2)),
         };
         out.normalize().unwrap_or(out)
     }
@@ -213,8 +227,14 @@ impl Conic {
         let q2 = p2.normalize().unwrap_or(p2);
         let (zc, z1, z2) = (c.z(), q1.z(), q2.z());
 
-        let u = q1.p.mul_complex(zc).sub(c.p.mul_complex(z1)).mul_complex(z2);
-        let v = q2.p.mul_complex(zc).sub(c.p.mul_complex(z2)).mul_complex(z1);
+        let u =
+            q1.p.mul_complex(zc)
+                .sub(c.p.mul_complex(z1))
+                .mul_complex(z2);
+        let v =
+            q2.p.mul_complex(zc)
+                .sub(c.p.mul_complex(z2))
+                .mul_complex(z1);
         let o = c.p.mul_complex(z1 * z2);
 
         let m = Mat3C::from_3vec(u, v, o);
@@ -335,7 +355,10 @@ impl Conic {
         let qp = qn.q.mul_vec(pn.p);
         let pqp = pn.p.transpose().dot(qp);
         let deg = Conic {
-            q: qn.q.mul_complex(pqp).sub(&Mat3C::from_outer(qp, qp.transpose())),
+            q: qn
+                .q
+                .mul_complex(pqp)
+                .sub(&Mat3C::from_outer(qp, qp.transpose())),
         };
         deg.as_xline()
     }
@@ -367,7 +390,10 @@ impl Conic {
         let oz2 = o.z() * o.z();
         let oqo = qn.evaluate(&o);
         let out = Conic {
-            q: qn.q.mul_complex(oz2).sub(&L_INF_SQR.mul_complex(oqo.mul_f64(2.0))),
+            q: qn
+                .q
+                .mul_complex(oz2)
+                .sub(&L_INF_SQR.mul_complex(oqo.mul_f64(2.0))),
         };
         out.normalize().unwrap_or(out)
     }
@@ -398,11 +424,7 @@ impl Conic {
             let det_r = mr[0][0] * (mr[1][1] * mr[2][2] - mr[1][2] * mr[2][1])
                 - mr[0][1] * (mr[1][0] * mr[2][2] - mr[1][2] * mr[2][0])
                 + mr[0][2] * (mr[1][0] * mr[2][1] - mr[1][1] * mr[2][0]);
-            if det_r > 0.0 {
-                r - t
-            } else {
-                r + t
-            }
+            if det_r > 0.0 { r - t } else { r + t }
         } else if (r + t).abs() >= (r - t).abs() {
             r + t
         } else {
@@ -431,7 +453,7 @@ impl Conic {
         let q_dual = match (Conic {
             q: self.q.adjugate(),
         })
-            .normalize()
+        .normalize()
         {
             Some(n) => n.q,
             None => return (zero, zero),
@@ -541,10 +563,7 @@ impl Conic {
 
         let l1 = qn.polar(&d2);
         let l2 = qn.polar(&d1);
-        XLine::new(
-            l1.normalize().unwrap_or(l1),
-            l2.normalize().unwrap_or(l2),
-        )
+        XLine::new(l1.normalize().unwrap_or(l1), l2.normalize().unwrap_or(l2))
     }
 
     /// 主直径与曲线的四个交点（顶点），以合点 `Qdot` 表示（无对称破缺与旋转跳变）。
@@ -614,9 +633,21 @@ mod tests {
         let cpts = [
             Dot::new(Complex::new(1.0, 1.0), Complex::ZERO, Complex::ONE),
             Dot::new(Complex::ZERO, Complex::new(2.0, -1.0), Complex::ONE),
-            Dot::new(Complex::new(-1.0, 0.5), Complex::new(1.0, 1.0), Complex::ONE),
-            Dot::new(Complex::new(2.0, 0.0), Complex::new(-1.0, 0.5), Complex::ONE),
-            Dot::new(Complex::new(0.5, -1.0), Complex::new(0.5, 2.0), Complex::ONE),
+            Dot::new(
+                Complex::new(-1.0, 0.5),
+                Complex::new(1.0, 1.0),
+                Complex::ONE,
+            ),
+            Dot::new(
+                Complex::new(2.0, 0.0),
+                Complex::new(-1.0, 0.5),
+                Complex::ONE,
+            ),
+            Dot::new(
+                Complex::new(0.5, -1.0),
+                Complex::new(0.5, 2.0),
+                Complex::ONE,
+            ),
         ];
         let c_complex = Conic::conic_from_5_dots(cpts[0], cpts[1], cpts[2], cpts[3], cpts[4]);
         for p in &cpts {
@@ -646,14 +677,25 @@ mod tests {
         assert!((ell.conic_eccentricity().re - 0.6).abs() < EPS);
 
         // 渐近线 + 一点：实渐近线 → 双曲线
-        let asy_real = XLine::new(Line::from_f64s(1.0, -1.0, 0.0), Line::from_f64s(1.0, 1.0, 0.0));
+        let asy_real = XLine::new(
+            Line::from_f64s(1.0, -1.0, 0.0),
+            Line::from_f64s(1.0, 1.0, 0.0),
+        );
         let hyp = Conic::conic_from_asymptotes_dot(asy_real, affine(2.0, 1.0));
         assert!(hyp.approx_eq(&Conic::from_f64s(1.0, 0.0, -1.0, 0.0, 0.0, -3.0), EPS));
 
         // 虚渐近线 → 椭圆 (x/5 ± i·y/4 = 0)
         let asy_imag = XLine::new(
-            Line::new(Complex::from_f64(0.2), Complex::new(0.0, 0.25), Complex::ZERO),
-            Line::new(Complex::from_f64(0.2), Complex::new(0.0, -0.25), Complex::ZERO),
+            Line::new(
+                Complex::from_f64(0.2),
+                Complex::new(0.0, 0.25),
+                Complex::ZERO,
+            ),
+            Line::new(
+                Complex::from_f64(0.2),
+                Complex::new(0.0, -0.25),
+                Complex::ZERO,
+            ),
         );
         let ell_from_asy = Conic::conic_from_asymptotes_dot(asy_imag, affine(5.0, 0.0));
         assert!(ell_from_asy.approx_eq(&ell_expected, EPS));
@@ -664,7 +706,7 @@ mod tests {
         let ctr = affine(1.0, -2.0);
         // 旋转共轭半直径构造椭圆与双曲线
         let p1 = affine(4.0, -1.0); // u = (3, 1)
-        let p2 = affine(0.0, 0.0);  // v = (-1, 2)
+        let p2 = affine(0.0, 0.0); // v = (-1, 2)
         let ell = Conic::conic_from_center_conjugate_ellipse(ctr, p1, p2);
         assert!(ell.contains(&p1, EPS) && ell.contains(&p2, EPS));
         assert!(ell.conic_center().p.cross(ctr.p).norm() < EPS);
@@ -716,15 +758,21 @@ mod tests {
         let hyp = Conic::from_f64s(16.0, 0.0, -9.0, 0.0, 0.0, -144.0);
         assert!((hyp.conic_eccentricity().re - 5.0 / 3.0).abs() < EPS);
         assert!(hyp.conic_asymptotes().approx_eq(
-            &XLine::new(Line::from_f64s(4.0, -3.0, 0.0), Line::from_f64s(4.0, 3.0, 0.0)),
+            &XLine::new(
+                Line::from_f64s(4.0, -3.0, 0.0),
+                Line::from_f64s(4.0, 3.0, 0.0)
+            ),
             EPS
         ));
-        assert!(hyp.conic_real_foci().approx_eq(
-            &Ddot::new(affine(5.0, 0.0), affine(-5.0, 0.0)),
-            EPS
-        ));
+        assert!(
+            hyp.conic_real_foci()
+                .approx_eq(&Ddot::new(affine(5.0, 0.0), affine(-5.0, 0.0)), EPS)
+        );
         assert!(hyp.conic_real_directrices().approx_eq(
-            &XLine::new(Line::from_f64s(5.0, 0.0, -9.0), Line::from_f64s(5.0, 0.0, 9.0)),
+            &XLine::new(
+                Line::from_f64s(5.0, 0.0, -9.0),
+                Line::from_f64s(5.0, 0.0, 9.0)
+            ),
             EPS
         ));
 
@@ -732,13 +780,13 @@ mod tests {
         let par = Conic::from_f64s(1.0, -1.0, 1.0, -2.0, -2.0, 0.0);
         assert!((par.conic_eccentricity().re - 1.0).abs() < EPS);
         let (pf_real, pf_imag) = par.conic_foci_pair();
-        assert!(pf_real.approx_eq(&Ddot::new(affine(0.5, 0.5), Dot::from_f64s(1.0, 1.0, 0.0)), EPS));
-        assert!(pf_imag.approx_eq(&Ddot::CYCLIC, EPS));
-        let par_axes = par.conic_axes();
-        assert!(par_axes.approx_eq(
-            &XLine::new(Line::from_f64s(1.0, -1.0, 0.0), Line::INF),
+        assert!(pf_real.approx_eq(
+            &Ddot::new(affine(0.5, 0.5), Dot::from_f64s(1.0, 1.0, 0.0)),
             EPS
         ));
+        assert!(pf_imag.approx_eq(&Ddot::CYCLIC, EPS));
+        let par_axes = par.conic_axes();
+        assert!(par_axes.approx_eq(&XLine::new(Line::from_f64s(1.0, -1.0, 0.0), Line::INF), EPS));
 
         // 4. 切线对：验证 bubo.md 的正交焦弦/极线性质
         let ext = affine(6.0, 5.0);

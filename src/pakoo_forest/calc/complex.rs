@@ -33,13 +33,15 @@ pub struct Complex {
 }
 
 impl Complex {
-    /// `0 + 0i`
+    /// `复数常量 0 + 0i`
     pub const ZERO: Complex = Complex::new(0.0, 0.0);
-    /// `1 + 0i`
+    /// `复数常量 1 + 0i`
     pub const ONE: Complex = Complex::new(1.0, 0.0);
+    /// `复数常量 -1 + 0i`
     pub const NEG_ONE: Complex = Complex::new(-1.0, 0.0);
-    /// `i`
+    /// `复数常量 i`
     pub const I: Complex = Complex::new(0.0, 1.0);
+    /// `复数常量 -i`
     pub const NEG_I: Complex = Complex::new(0.0, -1.0);
 
     // ------------------------------------------------------------------
@@ -66,19 +68,19 @@ impl Complex {
         Complex::new(r * c, r * s)
     }
 
-    /// 实部。
+    /// 实部
     #[inline]
     pub const fn re(self) -> f64 {
         self.re
     }
 
-    /// 虚部。
+    /// 虚部
     #[inline]
     pub const fn im(self) -> f64 {
         self.im
     }
 
-    /// 极坐标 `(模, 辐角)`。
+    /// 极坐标 返回：`(模, 辐角)`。
     #[inline]
     #[must_use]
     pub fn to_polar(self) -> (f64, f64) {
@@ -97,19 +99,17 @@ impl Complex {
     }
 
     /// 模平方 `|z|² = a² + b²`。
-    ///
-    /// 注意：`|z|` 极大（约 `> 1e154`）时会溢出为 `inf`；关心该边界时请改用
-    /// [`Complex::abs`]。
     #[inline]
     #[must_use]
     pub fn norm_sqr(self) -> f64 {
         self.re.mul_add(self.re, self.im * self.im)
     }
 
-    /// 模 `|z|`。基于 `hypot`，无中间上溢/下溢。
+    /// 模 `|z|`
     #[inline]
     #[must_use]
     pub fn abs(self) -> f64 {
+        // sqrt(re^2 + im^2)
         self.re.hypot(self.im)
     }
 
@@ -153,6 +153,9 @@ impl Complex {
     #[inline]
     #[must_use]
     pub fn div_complex(self, other: Complex) -> Complex {
+        // if 分支带来的性能损失基本可以忽略不计，远低于它换来的数值稳定性收益。
+        // 这是一个简单、可预测的比较，CPU 分支预测命中率通常 > 95%
+        // 函数本身计算量已经很大，分支成本被淹没在算术里
         if other.re.abs() >= other.im.abs() {
             let r = other.im / other.re;
             let d = other.re + other.im * r;
@@ -203,7 +206,7 @@ impl Complex {
         Complex::new(x - self.re, -self.im)
     }
 
-    /// `x / self`，走缩放除法。
+    /// `x / self`
     #[inline]
     #[must_use]
     pub fn f64_div(self, x: f64) -> Complex {

@@ -1,5 +1,11 @@
 // src/pakoo_forest/geo/conic/conic_as_circle.rs
-//! `Conic` 的圆与广义圆扩展（`A = C` 且 `B = 0`，即过虚圆点 `I, J` 的二次曲线族）。
+//！
+//! `q : A·x² + 2B·xy + C·y² + 2D·xz + 2E·yz + F·z² = 0`
+//! `Q = [A B D; B C E; D E F]``
+//!
+//!
+//! `Conic` 的「圆与广义圆扩展」
+//! `A = C` 且 `B = 0`，即过虚圆点 `I, J` 的二次曲线族
 //!
 //! # 广义圆统一空间
 //!
@@ -7,14 +13,14 @@
 //!
 //! - `A ≠ 0` 且 `AF − D² − E² ≠ 0`：非退化圆（实圆或虚圆）；
 //! - `A ≠ 0` 且 `AF − D² − E² = 0`：点圆（半径为 0，退化为过圆心的两条迷向直线）；
-//! - `A = 0`：广义直线 `z·(2Dx + 2Ey + Fz) = 0`（直线 `l` 与无穷远直线 `L∞` 之并，
-//!   过反演中心的圆反演后的像即落入此类）。
+//! - `A = 0`：广义直线 `z·(2Dx + 2Ey + Fz) = 0`（直线 `l` 与无穷远直线 `L∞` 之并，过反演中心的圆反演后的像即落入此类）。
 //!
 //! # 设计约定
 //!
 //! - 全程齐次与复数兼容、无除法与条件分支（除极少数防退化的无分支缩放外）；
 //! - 圆上一点构造、圆幂、正交、反演均使用**全纯复二次型**，确保复圆心/复半径/复点
 //!   同样严格满足关联与反演对合性。
+//!
 
 use crate::pakoo_forest::calc::Complex;
 use crate::pakoo_forest::geo::conic::Conic;
@@ -24,8 +30,7 @@ use crate::pakoo_forest::geo::line::Line;
 
 #[inline]
 fn det3(r0: [Complex; 3], r1: [Complex; 3], r2: [Complex; 3]) -> Complex {
-    r0[0] * (r1[1] * r2[2] - r1[2] * r2[1])
-        - r0[1] * (r1[0] * r2[2] - r1[2] * r2[0])
+    r0[0] * (r1[1] * r2[2] - r1[2] * r2[1]) - r0[1] * (r1[0] * r2[2] - r1[2] * r2[0])
         + r0[2] * (r1[0] * r2[1] - r1[1] * r2[0])
 }
 
@@ -34,7 +39,8 @@ impl Conic {
     // 谓词与广义圆—直线桥接
     // ------------------------------------------------------------------
 
-    /// 是否属于广义圆空间（`A = C` 且 `B = 0`，允许 `A = C = 0` 即广义直线）。
+    /// 是否属于广义圆空间（`A = C` 且 `B = 0`，允许 `A = C = 0` 即广义直线）
+    /// generalized 广义的
     #[inline]
     pub fn is_generalized_circle(&self, eps: f64) -> bool {
         if !self.is_finite() || self.is_zero() {
@@ -51,7 +57,7 @@ impl Conic {
         (q.a() - q.c()).abs() <= eps && q.b().abs() <= eps
     }
 
-    /// 是否为广义圆意义下的直线（`A = C = B = 0`，即 `z·(2Dx + 2Ey + Fz) = 0`）。
+    /// 是否为广义圆意义下的直线（`A = C = B = 0`，即 `z·(2Dx + 2Ey + Fz) = 0`）
     #[inline]
     pub fn is_generalized_line(&self, eps: f64) -> bool {
         if !self.is_generalized_circle(eps) {
@@ -120,6 +126,7 @@ impl Conic {
     ///
     /// 已约去公共因子 `Z₀`：当圆心位于无穷远（`Z₀ = 0`）时，平滑退化为过 `on_circle`
     /// 且法向为 `(X₀:Y₀)` 的广义直线。
+    /// cir_cd
     #[inline]
     #[must_use]
     pub fn circle_from_center_point(center: Dot, on_circle: Dot) -> Conic {
@@ -134,6 +141,7 @@ impl Conic {
     }
 
     /// 由直径两端点 `endpoints = {P₁, P₂}` 构造泰勒斯圆（对 `P₁, P₂` 严格对称）。
+    /// cir_dd
     #[inline]
     #[must_use]
     pub fn circle_from_diameter(endpoints: Ddot) -> Conic {
@@ -151,6 +159,7 @@ impl Conic {
     ///
     /// 三点共线时 `A = C = 0`，自动退化为该直线与 `L∞` 组成的广义直线；
     /// 存在重合点时行列式全为零，返回 `Conic::ZERO`。
+    /// cir_d3
     #[must_use]
     pub fn circle_from_3_dots(p1: Dot, p2: Dot, p3: Dot) -> Conic {
         let n1 = p1.normalize().unwrap_or(p1);
@@ -178,6 +187,7 @@ impl Conic {
     // ------------------------------------------------------------------
 
     /// 圆心 `(-D : -E : A)`（对广义直线 `A = 0` 给出其法方向上的无穷远点）。
+    /// cir_center
     #[inline]
     #[must_use]
     pub fn circle_center(&self) -> Dot {
@@ -221,9 +231,8 @@ impl Conic {
         } else {
             other.normalize().unwrap_or(*other)
         };
-        let val = (q1.d() * q2.d() + q1.e() * q2.e()).mul_f64(2.0)
-            - q1.a() * q2.f()
-            - q2.a() * q1.f();
+        let val =
+            (q1.d() * q2.d() + q1.e() * q2.e()).mul_f64(2.0) - q1.a() * q2.f() - q2.a() * q1.f();
         let scale = if eps == 0.0 {
             0.0
         } else {
@@ -237,6 +246,7 @@ impl Conic {
     /// - 同心圆自然给出无穷远直线 `Line::INF`；
     /// - 重合圆返回零直线 `(0:0:0)`；
     /// - 与广义直线（`A₂ = 0`）求根轴即得该直线本身。
+    /// cir_axis
     #[inline]
     #[must_use]
     pub fn circle_radical_axis(&self, other: &Conic) -> Line {
@@ -251,6 +261,7 @@ impl Conic {
     }
 
     /// 三个圆的根心。
+    /// cir3_center
     #[inline]
     #[must_use]
     pub fn circle_radical_center(&self, c2: &Conic, c3: &Conic) -> Dot {
@@ -262,6 +273,7 @@ impl Conic {
     ///
     /// 先求两圆根轴，再求根轴与 `self` 的交点：
     /// 统一覆盖相交、相切（重根）、相离（共轭复点对）与同心（返回 `Ddot::CYCLIC = {I, J}`）。
+    /// cir2_ins
     #[inline]
     #[must_use]
     pub fn circle_intersect_circle(&self, other: &Conic) -> Ddot {
@@ -291,20 +303,12 @@ impl Conic {
         let out = if a0.is_zero() {
             // 广义直线退化：反射公式
             let p_q_p = d0 * x * z.mul_f64(2.0) + e0 * y * z.mul_f64(2.0) + f0 * z * z;
-            Dot::new(
-                k0 * z * x - d0 * p_q_p,
-                k0 * z * y - e0 * p_q_p,
-                k0 * z * z,
-            )
+            Dot::new(k0 * z * x - d0 * p_q_p, k0 * z * y - e0 * p_q_p, k0 * z * z)
         } else {
             let dx = a0 * x + d0 * z;
             let dy = a0 * y + e0 * z;
             let n2 = dx * dx + dy * dy;
-            Dot::new(
-                k0 * z * dx - d0 * n2,
-                k0 * z * dy - e0 * n2,
-                a0 * n2,
-            )
+            Dot::new(k0 * z * dx - d0 * n2, k0 * z * dy - e0 * n2, a0 * n2)
         };
         out.normalize().unwrap_or(out)
     }
@@ -329,10 +333,10 @@ impl Conic {
         let t = d0 * d + e0 * e;
 
         let a_out = s0 * a - a0 * t.mul_f64(2.0) + a0 * a0 * f;
-        let d_out = f0 * d0 * a + (k0 - d0 * d0.mul_f64(2.0)) * d - d0 * e0 * e.mul_f64(2.0)
-            + a0 * d0 * f;
-        let e_out = f0 * e0 * a - d0 * e0 * d.mul_f64(2.0) + (k0 - e0 * e0.mul_f64(2.0)) * e
-            + a0 * e0 * f;
+        let d_out =
+            f0 * d0 * a + (k0 - d0 * d0.mul_f64(2.0)) * d - d0 * e0 * e.mul_f64(2.0) + a0 * d0 * f;
+        let e_out =
+            f0 * e0 * a - d0 * e0 * d.mul_f64(2.0) + (k0 - e0 * e0.mul_f64(2.0)) * e + a0 * e0 * f;
         let f_out = f0 * f0 * a - f0 * t.mul_f64(2.0) + s0 * f;
 
         let out = Conic::new(a_out, Complex::ZERO, a_out, d_out, e_out, f_out);
@@ -378,8 +382,16 @@ mod tests {
         assert!((c_imag.circle_radius_sqr().re + 4.0).abs() < EPS);
 
         // 圆心 + 圆上一点（含复点）
-        let ctr_c = Dot::new(Complex::new(1.0, 1.0), Complex::new(0.0, -1.0), Complex::ONE);
-        let on_c = Dot::new(Complex::new(2.0, -1.0), Complex::new(3.0, 1.0), Complex::ONE);
+        let ctr_c = Dot::new(
+            Complex::new(1.0, 1.0),
+            Complex::new(0.0, -1.0),
+            Complex::ONE,
+        );
+        let on_c = Dot::new(
+            Complex::new(2.0, -1.0),
+            Complex::new(3.0, 1.0),
+            Complex::ONE,
+        );
         let c_pt = Conic::circle_from_center_point(ctr_c, on_c);
         assert!(c_pt.contains(&on_c, EPS));
         assert!(c_pt.is_generalized_circle(EPS));
@@ -388,10 +400,17 @@ mod tests {
         let inf_ctr = Dot::from_f64s(1.0, 0.0, 0.0);
         let c_inf = Conic::circle_from_center_point(inf_ctr, Dot::from_f64s(3.0, 4.0, 1.0));
         assert!(c_inf.is_generalized_line(EPS));
-        assert!(c_inf.generalized_circle_as_line().approx_eq(&Line::from_f64s(1.0, 0.0, -3.0), EPS));
+        assert!(
+            c_inf
+                .generalized_circle_as_line()
+                .approx_eq(&Line::from_f64s(1.0, 0.0, -3.0), EPS)
+        );
 
         // 直径构造
-        let d_end = Ddot::new(Dot::from_f64s(-1.0, 0.0, 1.0), Dot::from_f64s(1.0, 0.0, 1.0));
+        let d_end = Ddot::new(
+            Dot::from_f64s(-1.0, 0.0, 1.0),
+            Dot::from_f64s(1.0, 0.0, 1.0),
+        );
         assert!(Conic::circle_from_diameter(d_end).approx_eq(&Conic::UNIT_CIRCLE, EPS));
 
         // 三点定圆 & 共线退化
@@ -424,7 +443,14 @@ mod tests {
 
         // 圆幂验证：缩放圆和点不改圆幂值
         let p = Dot::from_f64s(3.0, 4.0, 1.0);
-        assert!((c1.scaled(Complex::new(2.0, 3.0)).circle_power(&p.scaled(Complex::new(0.0, 5.0))).re - 24.0).abs() < EPS);
+        assert!(
+            (c1.scaled(Complex::new(2.0, 3.0))
+                .circle_power(&p.scaled(Complex::new(0.0, 5.0)))
+                .re
+                - 24.0)
+                .abs()
+                < EPS
+        );
 
         // 两圆求交（相交、相离复交点、同心）
         let c3 = Conic::circle_from_center_r_f64(Dot::from_f64s(1.0, 0.0, 1.0), 1.0);
@@ -444,7 +470,10 @@ mod tests {
         // 同心圆 → 根轴为 L∞，交点为 {I, J}
         let c_con = Conic::circle_from_center_r_f64(Dot::ZERO, 3.0);
         assert!(c1.circle_radical_axis(&c_con).approx_eq(&Line::INF, EPS));
-        assert!(c1.circle_intersect_circle(&c_con).approx_eq(&Ddot::CYCLIC, EPS));
+        assert!(
+            c1.circle_intersect_circle(&c_con)
+                .approx_eq(&Ddot::CYCLIC, EPS)
+        );
 
         // 根心等幂验证
         let c_a = Conic::circle_from_center_r_f64(Dot::from_f64s(0.0, 0.0, 1.0), 2.0);
@@ -470,7 +499,11 @@ mod tests {
         assert!(base.circle_invert_dot(&p_inf).p.cross(ctr.p).norm() < EPS);
 
         // 对合性（含复点）
-        let p = Dot::new(Complex::new(2.5, 0.5), Complex::new(-1.0, 0.3), Complex::ONE);
+        let p = Dot::new(
+            Complex::new(2.5, 0.5),
+            Complex::new(-1.0, 0.3),
+            Complex::ONE,
+        );
         let p_inv = base.circle_invert_dot(&p);
         let p_inv2 = base.circle_invert_dot(&p_inv);
         assert!(p_inv2.p.cross(p.p).norm() < EPS);
@@ -479,7 +512,10 @@ mod tests {
         let target = Conic::circle_from_center_r_f64(Dot::from_f64s(5.0, 2.0, 1.0), 2.0);
         let inv_target = base.circle_invert_conic_as_circle(&target);
         assert!(inv_target.is_circle(EPS));
-        assert!(base.circle_invert_conic_as_circle(&inv_target).approx_eq(&target, EPS));
+        assert!(
+            base.circle_invert_conic_as_circle(&inv_target)
+                .approx_eq(&target, EPS)
+        );
 
         // 过圆心的圆 → 反演为直线，再反演回原圆
         let through_ctr = Conic::circle_from_center_point(Dot::from_f64s(4.0, 2.0, 1.0), ctr);
@@ -492,7 +528,10 @@ mod tests {
         // 反演保正交（正交于基圆的圆反演到自身）
         let ortho = Conic::circle_from_center_r_f64(Dot::from_f64s(6.0, 2.0, 1.0), 4.0); // 5² = 3² + 4²
         assert!(base.circle_orthogonal(&ortho, EPS));
-        assert!(base.circle_invert_conic_as_circle(&ortho).approx_eq(&ortho, EPS));
+        assert!(
+            base.circle_invert_conic_as_circle(&ortho)
+                .approx_eq(&ortho, EPS)
+        );
 
         // 基为广义直线时退化为镜像反射
         let y_axis_circle = Conic::line_as_generalized_circle(&Line::Y_AXIS);

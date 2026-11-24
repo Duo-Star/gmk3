@@ -22,16 +22,14 @@
 //!   平行判定 [`Line::is_pall`] 由无穷远直线定义，垂直判定 [`Line::is_vert`]
 //!   由两个虚圆点定义（无穷远点与虚圆点构成调和四点）。
 
-/// 
+/// 射影点 复数分量齐次点坐标 `(x:y:z)`
 pub mod dot;
 
-/// 
+/// 射影直线 复数分量齐次线坐标 `[x:y:z]`
 pub mod line;
 
 ///
 pub mod conic;
-
-
 
 pub mod d_dot;
 pub mod d_x_line;
@@ -39,13 +37,10 @@ pub mod d_x_line;
 pub mod q_dot;
 pub mod x_line;
 
+pub use conic::Conic;
 pub use dot::Dot;
 pub use line::Line;
-pub use conic::Conic;
 //
 pub use d_dot::Ddot;
 // pub use d_x_line::DXLine;
 // pub use q_dot::QDot;
-
-
-

@@ -10,12 +10,12 @@ fn se() -> AppCreator<'static> {
             let t = p.t();
 
             // let c = Conic::from_f64s(1.0, 0.0, 0.0, 0.0, -1.0, -1.0);
-            // let d = Dot::from_f64s(1.0+(0.2*t).sin(),0.0+(0.2*t).cos(),1.0);
+            // let d = Dot::from_f64s(1.0 + (0.2 * t).sin(), 0.0 + (0.2 * t).cos(), 1.0);
             // let l = c.polar(&d);
             // let dp = c.intersect_line(&l);
             // // let cen = dp.center();
-            // let pp = c.point_at_f64(t.tan(),1e-12);
-            //
+            // let pp = c.point_at_f64(t.tan(), 1e-12);
+
             // p.draw_conic(c);
             // p.draw_line(l);
             // p.draw_dot(d);
@@ -23,25 +23,37 @@ fn se() -> AppCreator<'static> {
             // // p.draw_dot(cen);
             // p.draw_dot(pp);
 
+            // --------------
+            // let dot_a = Dot::from_affine_f64(1.0, 1.0);
+            // let dot_b = Dot::from_affine_f64(1.0, 3.0);
+            // let dot_c = Dot::from_affine_f64(3.0, 4.0);
+            // let dot_d = Dot::from_affine_f64(5.0, 2.0);
+            // let dot_e = Dot::from_affine_f64(5.0+(0.3*t).cos(), 2.0+(0.3*t).sin());
+            // //
+            // let c = Conic::conic_from_5_dots(dot_a, dot_b, dot_c, dot_d, dot_e);
+            // let c_c = Conic::circle_from_center_point(Dot::from_affine_f64(5.0, 2.0), Dot::from_affine_f64(5.0, 3.0));
+
+            // //
+            // p.draw_dot(dot_a);
+            // p.draw_dot(dot_b);
+            // p.draw_dot(dot_c);
+            // p.draw_dot(dot_d);
+            // p.draw_dot(dot_e);
+            // //
+            // p.draw_conic(c);
+            // p.draw_conic(c_c);
+
+            // ----------------------------
             let dot_a = Dot::from_affine_f64(1.0, 1.0);
             let dot_b = Dot::from_affine_f64(1.0, 3.0);
-            let dot_c = Dot::from_affine_f64(3.0, 4.0);
-            let dot_d = Dot::from_affine_f64(5.0, 2.0);
-            let dot_e = Dot::from_affine_f64(5.0+(0.3*t).cos(), 2.0+(0.3*t).sin());
-            //
-            let c = Conic::conic_from_5_dots(dot_a, dot_b, dot_c, dot_d, dot_e);
-            let c_c = Conic::circle_from_center_point(Dot::from_affine_f64(5.0, 2.0), Dot::from_affine_f64(5.0, 3.0));
+            let dot_c = Dot::from_affine_f64(3.0, 2.0);
 
-            //
+            let c = Conic::conic_from_center_conjugate_ellipse(dot_a, dot_b, dot_c);
+
             p.draw_dot(dot_a);
             p.draw_dot(dot_b);
             p.draw_dot(dot_c);
-            p.draw_dot(dot_d);
-            p.draw_dot(dot_e);
-            //
             p.draw_conic(c);
-            p.draw_conic(c_c);
-
 
             // p.camera_mut().proj_matrix.m[2][0] = 2.0 * t.sin();
             // p.camera_mut().proj_matrix.m[2][1] = 2.0 * (0.5*t).cos();
@@ -68,6 +80,7 @@ fn main() -> eframe::Result {
 
     eframe::run_native("gmk3", options, se())
 }
+
 // 网页端 (WebAssembly) 入口
 #[cfg(target_arch = "wasm32")]
 fn main() {
