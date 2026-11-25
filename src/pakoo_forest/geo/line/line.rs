@@ -20,8 +20,8 @@ use std::fmt;
 use std::ops::Mul;
 
 use crate::pakoo_forest::calc::{Complex, Cov3C, Vec3C};
-use crate::pakoo_forest::geo::dot::Dot;
 use crate::pakoo_forest::geo::conic::Conic;
+use crate::pakoo_forest::geo::dot::Dot;
 
 /// 齐次直线 `(a : b : c)`，定义到整体非零比例。
 #[derive(Clone, Copy, PartialEq)]
@@ -98,7 +98,6 @@ impl Line {
         self.p.v
     }
 
-
     /// 导出实齐次直线系数（带去全局复相位与虚部容差检测）；非射影实直线或含非有限分量返回 `None`。
     pub fn try_to_3f64(self, eps: f64) -> Option<[f64; 3]> {
         let v = &self.p.v;
@@ -137,6 +136,12 @@ impl Line {
     #[inline]
     pub fn to_3f64(self) -> [f64; 3] {
         self.try_to_3f64(1e-12).unwrap_or([f64::NAN; 3])
+    }
+
+    #[inline]
+    pub fn to_2f64(self) -> [f64; 2] {
+        let a: [f64; 3] = self.to_3f64();
+        [a[0], a[1]]
     }
 
     /// 嵌入为二重直线二次曲线：`Q = lᵀ · l`（秩 1）。

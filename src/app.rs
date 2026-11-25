@@ -4,6 +4,8 @@ use crate::canvas::camera::Mat3F64;
 use crate::canvas::labels::{CanvasLabel, LabelAnchor};
 use crate::canvas::plotter::Plotter;
 use crate::canvas::renderer::{CanvasCallback, CanvasGpuResources};
+use crate::gmk3_app::telescope_icon::telescope_line_icon;
+use crate::pakoo_forest::geo::Line;
 use eframe::{egui, egui_wgpu};
 use egui::{
     Align2, Button, Color32, CornerRadius, FontId, Image, Response, Sense, Stroke, StrokeKind, Ui,
@@ -160,14 +162,21 @@ fn custom_rounded_square_button(ui: &mut Ui) -> egui::Response {
         let half_len = 8.0;
         let icon_stroke = Stroke::new(2.0, visuals.fg_stroke.color);
 
-        ui.painter().line_segment(
-            [center - vec2(half_len, 0.0), center + vec2(half_len, 0.0)],
-            icon_stroke,
-        );
-        ui.painter().line_segment(
-            [center - vec2(0.0, half_len), center + vec2(0.0, half_len)],
-            icon_stroke,
-        );
+        // ui.painter().line_segment(
+        //     [center - vec2(half_len, 0.0), center + vec2(half_len, 0.0)],
+        //     icon_stroke,
+        // );
+        // ui.painter().line_segment(
+        //     [center - vec2(0.0, half_len), center + vec2(0.0, half_len)],
+        //     icon_stroke,
+        // );
+        telescope_line_icon(
+            ui.painter(),
+            center,
+            visuals.fg_stroke.color,
+            Line::Y_AXIS,
+            10.0,
+        )
     }
 
     response
@@ -349,7 +358,7 @@ impl Gmk3App {
     fn draw_tool_switch(&self, ui: &mut egui::Ui) {
         ui.vertical_centered(|ui| {
             ui.label("工具栏");
-            custom_rounded_square_button(ui)
+            custom_rounded_square_button(ui);
         });
     }
 

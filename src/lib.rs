@@ -7,3 +7,5 @@
 pub mod app;
 pub mod canvas;
 pub mod pakoo_forest;
+
+pub mod gmk3_app;
