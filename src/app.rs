@@ -5,7 +5,10 @@ use crate::canvas::labels::{CanvasLabel, LabelAnchor};
 use crate::canvas::plotter::Plotter;
 use crate::canvas::renderer::{CanvasCallback, CanvasGpuResources};
 use eframe::{egui, egui_wgpu};
-use egui::{Button, CornerRadius, Image, Sense, Stroke, Ui, pos2, vec2};
+use egui::{
+    Align2, Button, Color32, CornerRadius, FontId, Image, Response, Sense, Stroke, StrokeKind, Ui,
+    pos2, vec2,
+};
 
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
@@ -20,14 +23,57 @@ enum MobileTab {
     Properties,
     Tools,
 }
-
 impl MobileTab {
     const ALL: [(MobileTab, &'static str); 4] = [
-        (MobileTab::Objects, "对象列表"),
-        (MobileTab::Act, "操作栏"),
-        (MobileTab::Properties, "属性栏"),
-        (MobileTab::Tools, "工具栏"),
+        (MobileTab::Objects, "对象"),
+        (MobileTab::Act, "操作"),
+        (MobileTab::Properties, "属性"),
+        (MobileTab::Tools, "工具"),
     ];
+}
+
+fn draw_tab_icon(painter: &egui::Painter, center: egui::Pos2, tab: MobileTab, color: Color32) {
+    let stroke = Stroke::new(1.8, color);
+    let r = 7.0; // 图标基准半径
+
+    match tab {
+        // 1. 三角形（正三角形）
+        MobileTab::Objects => {
+            let p1 = center + vec2(0.0, -r);
+            let p2 = center + vec2(r * 0.866, r * 0.6);
+            let p3 = center + vec2(-r * 0.866, r * 0.6);
+            painter.add(egui::Shape::closed_line(vec![p1, p2, p3], stroke));
+        }
+        // 2. 直线和圆相交（圆略向左上微偏，斜线向右下偏移形成割线）
+        MobileTab::Act => {
+            let c = center + vec2(-r * 0.12, -r * 0.12);
+            let cr = r * 0.72;
+            painter.circle_stroke(c, cr, stroke);
+
+            let shift = vec2(r * 0.28, r * 0.28);
+            let dir = vec2(r * 0.85, -r * 0.85);
+            painter.line_segment([c + shift + dir, c + shift - dir], stroke);
+        }
+        // 3. 田字格（外框 + 十字中线）
+        MobileTab::Properties => {
+            let rect = egui::Rect::from_center_size(center, vec2(r * 1.8, r * 1.8));
+            painter.rect_stroke(rect, CornerRadius::same(2), stroke, StrokeKind::Inside);
+            painter.line_segment([rect.center_top(), rect.center_bottom()], stroke);
+            painter.line_segment([rect.left_center(), rect.right_center()], stroke);
+        }
+        // 4. 横放置的沙漏（棱角分明的蝴蝶结：左右两个对顶三角形）
+        MobileTab::Tools => {
+            let w = r * 0.78;
+            let h = r * 0.68;
+            let tl = center + vec2(-w, -h);
+            let bl = center + vec2(-w, h);
+            let tr = center + vec2(w, -h);
+            let br = center + vec2(w, h);
+
+            painter.add(egui::Shape::closed_line(vec![tl, bl, center], stroke));
+            painter.add(egui::Shape::closed_line(vec![tr, br, center], stroke));
+        }
+    }
 }
 
 pub struct Gmk3App {
@@ -125,6 +171,116 @@ fn custom_rounded_square_button(ui: &mut Ui) -> egui::Response {
     }
 
     response
+}
+
+/// 单个仿 Navigation Bar 导航项
+pub fn nav_bar_item(
+    ui: &mut Ui,
+    selected: bool,
+    icon_text: &str, // 演示用字符图标，实际可替换为自定义绘图或图片
+    label: &str,
+) -> Response {
+    // 1. 导航项标准尺寸（宽 72，高 64）
+    let size = vec2(72.0, 64.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let visuals = ui.style().interact(&response);
+
+        // 2. 确定选中态与未选中态的颜色
+        let (pill_bg, content_color) = if selected {
+            (
+                Color32::from_rgb(208, 228, 255), // 选中时的胶囊背景色
+                Color32::from_rgb(0, 29, 54),     // 选中时的图标/文字高亮色
+            )
+        } else if response.hovered() {
+            (
+                Color32::from_white_alpha(20), // 悬停时的微弱提示背景
+                visuals.fg_stroke.color,
+            )
+        } else {
+            (Color32::TRANSPARENT, visuals.text_color())
+        };
+
+        // 3. 绘制顶部的圆角胶囊背景（类似 Material 3 指示器）
+        let pill_size = vec2(56.0, 32.0);
+        let pill_center = rect.center_top() + vec2(0.0, 22.0);
+        let pill_rect = egui::Rect::from_center_size(pill_center, pill_size);
+
+        if pill_bg != Color32::TRANSPARENT {
+            ui.painter().rect(
+                pill_rect,
+                CornerRadius::same(16), // 高度的一半即全圆角胶囊
+                pill_bg,
+                Stroke::NONE,
+                StrokeKind::Inside,
+            );
+        }
+
+        // 4. 在胶囊中心绘制图标（此处复用你的线段绘制逻辑画一个示例图标，也可直接绘制文字/SVG）
+        let half_len = 7.0;
+        let icon_stroke = Stroke::new(2.0, content_color);
+        if icon_text == "+" {
+            ui.painter().line_segment(
+                [
+                    pill_center - vec2(half_len, 0.0),
+                    pill_center + vec2(half_len, 0.0),
+                ],
+                icon_stroke,
+            );
+            ui.painter().line_segment(
+                [
+                    pill_center - vec2(0.0, half_len),
+                    pill_center + vec2(0.0, half_len),
+                ],
+                icon_stroke,
+            );
+        } else {
+            ui.painter().text(
+                pill_center,
+                Align2::CENTER_CENTER,
+                icon_text,
+                FontId::proportional(18.0),
+                content_color,
+            );
+        }
+
+        // 5. 在胶囊下方绘制导航标签文字
+        let text_pos = rect.center_bottom() - vec2(0.0, 12.0);
+        ui.painter().text(
+            text_pos,
+            Align2::CENTER_CENTER,
+            label,
+            FontId::proportional(12.0),
+            content_color,
+        );
+    }
+
+    response
+}
+
+/// 组合成完整的 Navigation Bar
+pub fn custom_navigation_bar(ui: &mut Ui, selected_idx: &mut usize) {
+    let items = [("⌂", "首页"), ("★", "收藏"), ("+", "发布"), ("⚙", "设置")];
+
+    egui::Frame::new()
+        .fill(ui.visuals().window_fill())
+        .stroke(Stroke::new(
+            1.0,
+            ui.visuals().widgets.noninteractive.bg_stroke.color,
+        ))
+        .corner_radius(CornerRadius::same(16))
+        .inner_margin(egui::Margin::symmetric(12, 4))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                for (idx, (icon, label)) in items.iter().enumerate() {
+                    if nav_bar_item(ui, *selected_idx == idx, icon, label).clicked() {
+                        *selected_idx = idx;
+                    }
+                }
+            });
+        });
 }
 
 impl Gmk3App {
@@ -262,59 +418,55 @@ impl Gmk3App {
     // ------------------------------------------------------------------
 
     fn draw_mobile_bottom_bar(&mut self, ui: &mut egui::Ui) {
-        let accent = if ui.visuals().dark_mode {
-            egui::Color32::from_rgb(170, 94, 122)
-        } else {
-            egui::Color32::from_rgb(170, 94, 122)
-        };
+        let accent = egui::Color32::from_rgb(170, 94, 122);
 
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             let tab_w = (ui.available_width() / 4.0).max(1.0);
-            let tab_h = 36.0;
+            let tab_h = 56.0; // 适配“上胶囊图标 + 下文字标签”的高度
 
             for (tab, label) in MobileTab::ALL {
-                let (rect, resp) = ui.allocate_exact_size(vec2(tab_w, tab_h), Sense::click());
                 let is_active = self.mobile_active_tab == Some(tab);
+                let (rect, resp) = ui.allocate_exact_size(vec2(tab_w, tab_h), Sense::click());
 
                 if ui.is_rect_visible(rect) {
-                    if is_active {
-                        ui.painter().rect_filled(
-                            rect.shrink(3.0),
-                            CornerRadius::same(8),
-                            accent.gamma_multiply(0.16),
-                        );
-                        // let indicator = egui::Rect::from_min_size(
-                        //     pos2(rect.center().x - 14.0, rect.top() + 1.0),
-                        //     vec2(28.0, 2.5),
-                        // );
-                        // ui.painter()
-                        //     .rect_filled(indicator, CornerRadius::same(2), accent);
+                    // 1. 胶囊指示器与内容配色
+                    let (pill_bg, content_color) = if is_active {
+                        (accent.gamma_multiply(0.20), accent)
                     } else if resp.hovered() {
-                        ui.painter().rect_filled(
-                            rect.shrink(3.0),
-                            CornerRadius::same(8),
+                        (
                             ui.visuals().widgets.hovered.bg_fill.gamma_multiply(0.5),
-                        );
-                    }
-
-                    let text_color = if is_active {
-                        accent
-                    } else if resp.hovered() {
-                        ui.visuals().strong_text_color()
+                            ui.visuals().strong_text_color(),
+                        )
                     } else {
-                        ui.visuals().text_color()
+                        (Color32::TRANSPARENT, ui.visuals().text_color())
                     };
 
+                    // 2. 绘制上方圆角胶囊背景
+                    let pill_size = vec2((tab_w - 16.0).clamp(36.0, 56.0), 28.0);
+                    let pill_center = rect.center_top() + vec2(0.0, 19.0);
+                    let pill_rect = egui::Rect::from_center_size(pill_center, pill_size);
+
+                    if pill_bg != Color32::TRANSPARENT {
+                        ui.painter()
+                            .rect_filled(pill_rect, CornerRadius::same(14), pill_bg);
+                    }
+
+                    // 3. 调用矢量图标绘制函数（替代原来的文字图标）
+                    draw_tab_icon(ui.painter(), pill_center, tab, content_color);
+
+                    // 4. 在胶囊下方绘制导航文字
+                    let text_pos = rect.center_bottom() - vec2(0.0, 10.0);
                     ui.painter().text(
-                        rect.center(),
+                        text_pos,
                         egui::Align2::CENTER_CENTER,
                         label,
-                        egui::FontId::proportional(14.0),
-                        text_color,
+                        egui::FontId::proportional(11.5),
+                        content_color,
                     );
                 }
 
+                // 5. 点击展开/再次点击收起逻辑
                 if resp.clicked() {
                     if self.mobile_active_tab == Some(tab) {
                         self.mobile_active_tab = None;
