@@ -353,6 +353,10 @@ pub struct PointInstance {
     pub center_ndc: [f32; 2],
     pub radius_px: f32,
     pub color: [f32; 4],
+    /// 形状编号（见 `DotShape::shader_code`）：0 实心圆 1 空心圆环 2 十字 3 小圆。
+    pub shape: u32,
+    /// 选中态：绘制同色半透明光晕 + 边缘细环。
+    pub selected: u32,
 }
 
 #[derive(Clone)]

@@ -1,7 +1,7 @@
 use crate::canvas::camera::{
     CanvasUniforms, ConicInstance, LineVertex, PointInstance, PreparedDrawData,
 };
-use eframe::egui_wgpu::{self, CallbackResources, CallbackTrait, ScreenDescriptor};
+use eframe::egui_wgpu::{CallbackResources, CallbackTrait, ScreenDescriptor};
 use egui::PaintCallbackInfo;
 use wgpu::util::DeviceExt;
 
@@ -243,6 +243,16 @@ impl CanvasGpuResources {
                         offset: 12,
                         shader_location: 2,
                     },
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Uint32,
+                        offset: 28,
+                        shader_location: 3,
+                    },
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Uint32,
+                        offset: 32,
+                        shader_location: 4,
+                    },
                 ],
             })],
             color_target,
@@ -421,5 +431,23 @@ impl CallbackTrait for CanvasCallback {
             render_pass.set_vertex_buffer(0, res.point_ibo.buffer.slice(..));
             render_pass.draw(0..6, 0..res.point_instance_count);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// 用 naga 在编译期校验着色器（设备上才会暴露的校验错误提前在这里报出来）。
+    #[test]
+    fn shaders_wgsl_validates() {
+        let source = include_str!("shaders.wgsl");
+        let module =
+            wgpu::naga::front::wgsl::parse_str(source).expect("WGSL 解析失败");
+        let mut validator = wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::all(),
+        );
+        validator
+            .validate(&module)
+            .expect("WGSL 校验失败（顶点/片元 I/O 不匹配等）");
     }
 }

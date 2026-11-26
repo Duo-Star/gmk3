@@ -5,6 +5,7 @@ use crate::canvas::labels::{CanvasLabel, LabelAnchor};
 use crate::canvas::plotter::Plotter;
 use crate::canvas::renderer::{CanvasCallback, CanvasGpuResources};
 use crate::gmk3_app::telescope_icon::telescope_line_icon;
+use crate::monkey::Monkey;
 use crate::pakoo_forest::geo::Line;
 use eframe::{egui, egui_wgpu};
 use egui::{
@@ -80,7 +81,8 @@ fn draw_tab_icon(painter: &egui::Painter, center: egui::Pos2, tab: MobileTab, co
 
 pub struct Gmk3App {
     pub plotter: Plotter,
-    update_fn: Box<dyn FnMut(&mut Plotter)>,
+    /// 中间表示（Monkey）：几何构造的单一事实源（每帧解算并绘制）
+    monkey: Monkey,
     start_time: Instant,
     paused: bool,
     paused_t: f64,
@@ -293,10 +295,7 @@ pub fn custom_navigation_bar(ui: &mut Ui, selected_idx: &mut usize) {
 }
 
 impl Gmk3App {
-    pub fn new(
-        cc: &eframe::CreationContext<'_>,
-        update_fn: impl FnMut(&mut Plotter) + 'static,
-    ) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, monkey: Monkey) -> Self {
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
             let gpu_res = CanvasGpuResources::new(&render_state.device, render_state.target_format);
             render_state
@@ -308,7 +307,7 @@ impl Gmk3App {
 
         Self {
             plotter: Plotter::new(),
-            update_fn: Box::new(update_fn),
+            monkey,
             start_time: Instant::now(),
             paused: false,
             paused_t: 0.0,
@@ -678,8 +677,15 @@ impl Gmk3App {
             _ => false,
         };
 
-        // 2. 桌面端鼠标右键：转动射影视角（直接更新 proj_matrix）
+        // 2. 桌面端鼠标右键双击：恢复视角变换矩阵（回到仿射视角）
         if !multi_touch_active
+            && !pointer_blocked
+            && response.double_clicked_by(egui::PointerButton::Secondary)
+        {
+            self.plotter.camera_mut().proj_matrix = Mat3F64::IDENTITY;
+        }
+        // 3. 桌面端鼠标右键：转动射影视角（直接更新 proj_matrix）
+        else if !multi_touch_active
             && !pointer_blocked
             && response.dragged_by(egui::PointerButton::Secondary)
         {
@@ -690,7 +696,7 @@ impl Gmk3App {
                 .camera_mut()
                 .tilt_by_ndc_delta(dx_ndc, dy_ndc, aspect);
         }
-        // 3. 左键/单指/中键拖动：平移画布（屏蔽双指期间及刚抬起一指的过渡帧）
+        // 4. 左键/单指/中键拖动：平移画布（屏蔽双指期间及刚抬起一指的过渡帧）
         else if !multi_touch_active
             && !self.was_multi_touch
             && !pointer_blocked
@@ -731,19 +737,37 @@ impl Gmk3App {
             }
         }
 
-        // 每帧重算：清空缓冲 -> 设置 t -> 执行命令式几何构造与提交
-        let update_fn = &mut self.update_fn;
-        self.plotter.update(t, |p| update_fn(p));
+        // 每帧全量解算：Monkey 程序 → 几何对象 → 提交绘制
+        let dark = ui.visuals().dark_mode;
+        // 底图配色（背景 / 网格 / 坐标轴 / 标签）跟随主题
+        self.plotter.set_theme(dark);
+        let monkey = &mut self.monkey;
+        self.plotter.update(t, |p| {
+            monkey.solve();
+            monkey.draw_into(p, dark);
+        });
 
         // 黑底 + wgpu 绘制回调 + 坐标文字 + 细框线
+        let colors = self.plotter.colors;
         let painter = ui.painter_at(canvas_rect);
-        painter.rect_filled(canvas_rect, 0.0, egui::Color32::BLACK);
+        painter.rect_filled(
+            canvas_rect,
+            0.0,
+            egui::Color32::from_rgb(
+                (colors.background[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (colors.background[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (colors.background[2].clamp(0.0, 1.0) * 255.0).round() as u8,
+            ),
+        );
 
         let ppp = ui.ctx().pixels_per_point();
         let viewport_px = [canvas_rect.width() * ppp, canvas_rect.height() * ppp];
         let draw_data = self.plotter.prepare_draw_data(viewport_px, ppp);
         self.plotter
             .prepare_labels_into(viewport_px, ppp, &mut self.canvas_labels);
+        // 对象名标签（本轮仅点），与刻度标签合并绘制
+        self.monkey
+            .collect_labels(&self.plotter, viewport_px, dark, &mut self.canvas_labels);
 
         painter.add(egui_wgpu::Callback::new_paint_callback(
             canvas_rect,
@@ -756,7 +780,7 @@ impl Gmk3App {
             painter.rect_stroke(
                 canvas_rect,
                 0.0,
-                Stroke::new(1.0, egui::Color32::from_gray(50)),
+                Stroke::new(1.0, egui::Color32::from_gray(colors.border_gray)),
                 egui::StrokeKind::Inside,
             );
         }

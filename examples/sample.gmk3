@@ -1,0 +1,8 @@
+// gmk3 0.0.5
+d1 d_xy_ff 1 1 # navy dashed 2
+d2 d_xy_ff 1 0 # red fixed 1.5 hollow
+c c_circle_cp_dd d1 d2
+p d_param_cf c -3
+l l_join_dd p d1
+x d_meet_ll l XA # label_hidden
+y d_meet_ll l YA # dotted ube 2

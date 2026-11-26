@@ -226,12 +226,14 @@ fn fs_conic(in: ConicVertexOut) -> @location(0) vec4<f32> {
 }
 
 // ------------------------------------------------------------------
-// 3. 点（Instanced 像素矩形 + 圆形 SDF）
+// 3. 点（Instanced 像素矩形 + 形状 SDF + 选中光晕）
 // ------------------------------------------------------------------
 struct PointInstanceIn {
     @location(0) center_ndc: vec2<f32>,
     @location(1) radius_px: f32,
     @location(2) color: vec4<f32>,
+    @location(3) shape: u32,
+    @location(4) selected: u32,
 };
 
 struct PointVertexOut {
@@ -239,6 +241,8 @@ struct PointVertexOut {
     @location(0) local_px: vec2<f32>,
     @location(1) radius_px: f32,
     @location(2) color: vec4<f32>,
+    @location(3) @interpolate(flat) shape: u32,
+    @location(4) @interpolate(flat) selected: u32,
 };
 
 @vertex
@@ -251,7 +255,9 @@ fn vs_point(@builtin(vertex_index) vid: u32, inst: PointInstanceIn) -> PointVert
         vec2<f32>( 1.0,  1.0),
         vec2<f32>(-1.0,  1.0),
     );
-    let pad = inst.radius_px + 1.5;
+    // 选中时矩形需覆盖 1.6 倍半径的光晕
+    let halo_scale = select(1.0, 1.6, inst.selected == 1u);
+    let pad = inst.radius_px * halo_scale + 1.5;
     let local_px = offsets[vid] * pad;
     let offset_ndc = vec2<f32>(
         local_px.x * (2.0 / max(u.viewport_px.x, 1.0)),
@@ -263,16 +269,50 @@ fn vs_point(@builtin(vertex_index) vid: u32, inst: PointInstanceIn) -> PointVert
     out.local_px = local_px;
     out.radius_px = inst.radius_px;
     out.color = inst.color;
+    out.shape = inst.shape;
+    out.selected = inst.selected;
     return out;
 }
 
 @fragment
 fn fs_point(in: PointVertexOut) -> @location(0) vec4<f32> {
-    let dist = length(in.local_px);
     let r = in.radius_px;
-    let alpha = 1.0 - smoothstep(max(r - 0.75, 0.0), r + 0.75, dist);
-    if (alpha <= 0.001) {
+    let dist = length(in.local_px);
+
+    // ---- 基础形状覆盖率（0 solid / 1 hollow / 2 cross / 3 dotted）----
+    var a: f32;
+    if (in.shape == 1u) {
+        // 空心圆环：|dist - r| < 环宽
+        let hw = max(1.0, 0.22 * r);
+        let d = abs(dist - r);
+        a = 1.0 - smoothstep(max(hw - 0.75, 0.0), hw + 0.75, d);
+    } else if (in.shape == 2u) {
+        // 十字：横竖两盒 SDF 的并集
+        let hw = max(0.8, 0.25 * r);
+        let dx = abs(in.local_px.x);
+        let dy = abs(in.local_px.y);
+        let d = min(max(dy - hw, dx - r), max(dx - hw, dy - r));
+        a = 1.0 - smoothstep(-0.75, 0.75, d);
+    } else {
+        // solid / dotted：实心圆（dotted 缩小半径）
+        let rr = select(r, 0.55 * r, in.shape == 3u);
+        a = 1.0 - smoothstep(max(rr - 0.75, 0.0), rr + 0.75, dist);
+    }
+
+    // ---- 选中：同色半透明光晕 + 光晕边缘细环（在点之下合成）----
+    var a_sel: f32 = 0.0;
+    if (in.selected == 1u) {
+        let hr = r * 1.6;
+        let halo = 1.0 - smoothstep(max(hr - 0.75, 0.0), hr + 0.75, dist);
+        let a_halo = halo * 0.25;
+        let ring_d = abs(dist - hr);
+        let a_ring = 1.0 - smoothstep(max(0.6 - 0.5, 0.0), 0.6 + 0.5, ring_d);
+        a_sel = a_halo + a_ring * (1.0 - a_halo);
+    }
+
+    let a_total = a + a_sel * (1.0 - a);
+    if (a_total <= 0.001) {
         discard;
     }
-    return vec4<f32>(in.color.rgb, in.color.a * alpha);
+    return vec4<f32>(in.color.rgb, in.color.a * a_total);
 }

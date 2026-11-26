@@ -1,9 +1,6 @@
 use crate::canvas::camera::{Mat3F64, ProjectiveCamera};
 use crate::canvas::plotter::{MAJOR_EVERY, grid_minor_step};
-
-/// 标签文字基准颜色（与 COORDINATE / AXIS 协调的高可读浅灰白）
-const TICK_LABEL_COLOR: [f32; 4] = [0.78, 0.78, 0.80, 0.92];
-const AXIS_NAME_COLOR: [f32; 4] = [0.92, 0.92, 0.94, 0.96];
+use crate::canvas::styles::CanvasColors;
 
 /// 字号（逻辑点 pt）
 const TICK_FONT_SIZE_PT: f32 = 11.5;
@@ -315,6 +312,7 @@ fn emit_ticks_on_segment(
     offset_pt: [f32; 2],
     anchor: LabelAnchor,
     skip_zero: bool,
+    colors: &CanvasColors,
     placed_rects: &mut Vec<[f32; 4]>,
     out: &mut Vec<CanvasLabel>,
 ) {
@@ -457,7 +455,7 @@ fn emit_ticks_on_segment(
                                 offset_pt,
                                 anchor,
                                 text,
-                                color: TICK_LABEL_COLOR,
+                                color: colors.tick_label,
                                 alpha: fade,
                                 font_size_pt: TICK_FONT_SIZE_PT,
                                 kind: LabelKind::AxisTick,
@@ -552,6 +550,7 @@ fn emit_axis_name_label(
     h_pt: f64,
     major_step: f64,
     axis: AxisKind,
+    colors: &CanvasColors,
     placed_rects: &mut Vec<[f32; 4]>,
     out: &mut Vec<CanvasLabel>,
 ) {
@@ -658,7 +657,7 @@ fn emit_axis_name_label(
         offset_pt: offset,
         anchor,
         text,
-        color: AXIS_NAME_COLOR,
+        color: colors.axis_name,
         alpha: fade,
         font_size_pt: AXIS_NAME_FONT_SIZE_PT,
         kind: LabelKind::AxisName,
@@ -733,6 +732,7 @@ pub fn collect_canvas_labels(
     show_axes: bool,
     viewport_px: [f32; 2],
     pixels_per_point: f32,
+    colors: &CanvasColors,
     out: &mut Vec<CanvasLabel>,
 ) {
     out.clear();
@@ -774,6 +774,7 @@ pub fn collect_canvas_labels(
                 h_pt,
                 major_step,
                 AxisKind::X,
+                colors,
                 &mut placed_rects,
                 out,
             );
@@ -788,6 +789,7 @@ pub fn collect_canvas_labels(
                 h_pt,
                 major_step,
                 AxisKind::Y,
+                colors,
                 &mut placed_rects,
                 out,
             );
@@ -820,6 +822,7 @@ pub fn collect_canvas_labels(
             off,
             anc,
             false,
+            colors,
             &mut placed_rects,
             out,
         );
@@ -837,6 +840,7 @@ pub fn collect_canvas_labels(
             off,
             anc,
             false,
+            colors,
             &mut placed_rects,
             out,
         );
@@ -857,6 +861,7 @@ pub fn collect_canvas_labels(
             off,
             anc,
             skip_y_zero,
+            colors,
             &mut placed_rects,
             out,
         );
@@ -874,6 +879,7 @@ pub fn collect_canvas_labels(
             off,
             anc,
             skip_y_zero,
+            colors,
             &mut placed_rects,
             out,
         );
@@ -891,7 +897,7 @@ mod tests {
         cam.half_height = 4.0;
 
         let mut labels = Vec::new();
-        collect_canvas_labels(&cam, true, true, [800.0, 600.0], 1.0, &mut labels);
+        collect_canvas_labels(&cam, true, true, [800.0, 600.0], 1.0, &CanvasColors::DARK, &mut labels);
 
         assert!(!labels.is_empty());
         // 第二象限：所有 X 刻度均贴下边缘 (y_ndc = -1)，所有 Y 刻度均贴右边缘 (x_ndc = +1)
@@ -926,7 +932,7 @@ mod tests {
     fn origin_view_draws_axes_names_and_single_zero() {
         let cam = ProjectiveCamera::default();
         let mut labels = Vec::new();
-        collect_canvas_labels(&cam, true, true, [800.0, 600.0], 1.0, &mut labels);
+        collect_canvas_labels(&cam, true, true, [800.0, 600.0], 1.0, &CanvasColors::DARK, &mut labels);
 
         let zeros = labels.iter().filter(|l| l.text == "0").count();
         assert_eq!(zeros, 1);
@@ -950,7 +956,7 @@ mod tests {
             m: [[1.0, 0.15, 0.0], [0.05, 1.0, 0.0], [0.35, 0.45, 1.0]],
         };
         let mut labels = Vec::new();
-        collect_canvas_labels(&cam, true, true, [1200.0, 900.0], 1.0, &mut labels);
+        collect_canvas_labels(&cam, true, true, [1200.0, 900.0], 1.0, &CanvasColors::DARK, &mut labels);
 
         assert!(labels.len() < 128);
         assert!(labels.iter().all(|l| l.alpha > 0.0 && l.alpha <= 1.0));

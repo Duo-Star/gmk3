@@ -42,5 +42,6 @@ pub use dot::Dot;
 pub use line::Line;
 //
 pub use d_dot::Ddot;
-// pub use d_x_line::DXLine;
-// pub use q_dot::QDot;
+pub use d_x_line::DXLine;
+pub use q_dot::Qdot;
+pub use x_line::XLine;

@@ -3,7 +3,7 @@ use crate::canvas::camera::{
     ProjectiveCamera, clip_line_to_ndc, extrude_line_quad,
 };
 use crate::canvas::labels::{CanvasLabel, collect_canvas_labels};
-use crate::canvas::styles::{ConicStyle, DdotStyle, DotStyle, LineStyle};
+use crate::canvas::styles::{CanvasColors, ConicStyle, DdotStyle, DotStyle, LineStyle};
 use crate::pakoo_forest::geo::d_dot::Ddot;
 use crate::pakoo_forest::geo::{conic::Conic, dot::Dot, line::Line};
 
@@ -17,14 +17,9 @@ const MINOR_TARGET_PX: f64 = 24.0;
 // 可见性：
 pub(crate) const MAJOR_EVERY: i64 = 5;
 
-/// 次/主网格线颜色与像素线宽
-const GRID_MINOR_COLOR: [f32; 4] = [0.16, 0.16, 0.17, 1.0];
-const GRID_MAJOR_COLOR: [f32; 4] = [0.30, 0.30, 0.32, 1.0];
+/// 次/主网格线像素线宽与坐标轴线宽（颜色见 `CanvasColors`）
 const GRID_MINOR_LINE_PX: f32 = 1.0;
 const GRID_MAJOR_LINE_PX: f32 = 1.15;
-
-/// 坐标轴颜色（白）与线宽（像素）
-const AXIS_COLOR: [f32; 4] = [0.7, 0.7, 0.7, 1.0];
 const AXIS_WIDTH_PX: f32 = 1.3;
 
 /// 美观步长（nice numbers）算法 —— Heckbert, Graphics Gems I (1990)。
@@ -119,6 +114,8 @@ fn push_projected_dot(
     h: &Mat3F64,
     radius_px: f32,
     color: [f32; 4],
+    shape: u32,
+    selected: u32,
     out: &mut Vec<PointInstance>,
 ) {
     let dot_re = dot.to_3f64();
@@ -131,6 +128,8 @@ fn push_projected_dot(
                 center_ndc: [x, y],
                 radius_px,
                 color,
+                shape,
+                selected,
             });
         }
     }
@@ -153,6 +152,8 @@ pub struct Plotter {
     pub show_grid: bool,
     /// 是否显示世界坐标系坐标轴（默认开启）
     pub show_axes: bool,
+    /// 底图配色（背景 / 网格 / 坐标轴 / 标签 / 边框），随主题切换
+    pub colors: CanvasColors,
     time_sec: f64,
 }
 
@@ -176,8 +177,15 @@ impl Plotter {
             camera: ProjectiveCamera::default(),
             show_grid: true,
             show_axes: true,
+            colors: CanvasColors::DARK,
             time_sec: 0.0,
         }
+    }
+
+    /// 按主题切换底图配色（`dark = true` 夜间，`false` 日间）。
+    #[inline]
+    pub fn set_theme(&mut self, dark: bool) {
+        self.colors = CanvasColors::for_theme(dark);
     }
 
     #[inline]
@@ -320,7 +328,7 @@ impl Plotter {
                     w_px,
                     h_px,
                     0.5 * AXIS_WIDTH_PX * pixels_per_point,
-                    AXIS_COLOR,
+                    self.colors.axis,
                     &mut line_vertices,
                 );
             }
@@ -386,6 +394,8 @@ impl Plotter {
                 &h,
                 style.radius_px * pixels_per_point,
                 style.color,
+                style.shape.shader_code(),
+                u32::from(style.selected),
                 &mut point_instances,
             );
         }
@@ -394,8 +404,9 @@ impl Plotter {
                 continue;
             }
             let r = style.radius_px * pixels_per_point;
-            push_projected_dot(&d_dot.p(), &h, r, style.color, &mut point_instances);
-            push_projected_dot(&d_dot.q(), &h, r, style.color, &mut point_instances);
+            // 骈点绘制本轮不变：实心圆、无选中渲染
+            push_projected_dot(&d_dot.p(), &h, r, style.color, 0, 0, &mut point_instances);
+            push_projected_dot(&d_dot.q(), &h, r, style.color, 0, 0, &mut point_instances);
         }
 
         let gm = &grid_inv.m;
@@ -407,8 +418,8 @@ impl Plotter {
                 grid_inv_col0: [gm[0][0] as f32, gm[1][0] as f32, gm[2][0] as f32, 0.0],
                 grid_inv_col1: [gm[0][1] as f32, gm[1][1] as f32, gm[2][1] as f32, 0.0],
                 grid_inv_col2: [gm[0][2] as f32, gm[1][2] as f32, gm[2][2] as f32, 0.0],
-                grid_minor_color: GRID_MINOR_COLOR,
-                grid_major_color: GRID_MAJOR_COLOR,
+                grid_minor_color: self.colors.grid_minor,
+                grid_major_color: self.colors.grid_major,
                 major_line_px: GRID_MAJOR_LINE_PX * pixels_per_point,
                 major_every: MAJOR_EVERY as f32,
                 _pad: [0.0, 0.0],
@@ -432,6 +443,7 @@ impl Plotter {
             self.show_axes,
             viewport_px,
             pixels_per_point,
+            &self.colors,
             out,
         );
     }
@@ -549,7 +561,10 @@ mod tests {
         // 仅 2 条坐标轴在直线缓冲里（网格由 GPU 全屏着色器绘制）
         assert_eq!(data.axis_vertex_count, 12);
         assert_eq!(data.line_vertices.len(), 12);
-        assert!(data.line_vertices.iter().all(|v| v.color == AXIS_COLOR));
+        assert!(data
+            .line_vertices
+            .iter()
+            .all(|v| v.color == CanvasColors::DARK.axis));
 
         let mut p2 = Plotter::new();
         p2.show_grid = false;

@@ -17,6 +17,7 @@ use std::fmt;
 // 一对"一对点"
 // 对完全四点形的抽象，p-q；m-n的配对是一种约定
 // 事实上这种初始约定有三种，但各自独立后续性质完全一致，在命令式计算几何里，我们必须约定一种配合方式，而这不影响数学模型正确性
+#[derive(Clone, Copy, PartialEq)]
 pub struct Qdot {
     p: Dot,
     q: Dot,
