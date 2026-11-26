@@ -56,11 +56,7 @@ pub fn grid_minor_step(camera: &ProjectiveCamera, aspect: f64, viewport_px: [f32
 /// 在 `f64` 下构造 `NDC -> 次网格单位坐标` 的 3x3 逆变换矩阵：
 /// 预先把原点对齐到当前视口附近的主网格整数倍，消除高倍缩放/大平移下的 `f32` 抖动，
 /// 同时在射影视角下严格保持所有主/次网格线的射影不变性。
-fn build_grid_inv_matrix(
-    camera: &ProjectiveCamera,
-    h_inv: &Mat3F64,
-    minor_step: f64,
-) -> Mat3F64 {
+fn build_grid_inv_matrix(camera: &ProjectiveCamera, h_inv: &Mat3F64, minor_step: f64) -> Mat3F64 {
     let major_step = minor_step * (MAJOR_EVERY as f64);
 
     let center_w = h_inv.mul_vec([0.0, 0.0, 1.0]);
@@ -135,6 +131,18 @@ fn push_projected_dot(
     }
 }
 
+/// 视角矩阵插值动画：逐元素线性插值 + smoothstep 缓动，按 [`Plotter::time_sec`] 推进。
+#[derive(Clone, Copy, Debug)]
+struct ProjAnim {
+    start: Mat3F64,
+    target: Mat3F64,
+    t0: f64,
+    dur: f64,
+}
+
+/// 视角矩阵动画时长（秒）。
+const PROJ_ANIM_DURATION: f64 = 0.2;
+
 /// 命令式几何绘图器：每帧重置缓冲、执行构造更新、打包提交给 wgpu。
 pub struct Plotter {
     dots: Vec<Dot>,
@@ -155,6 +163,8 @@ pub struct Plotter {
     /// 底图配色（背景 / 网格 / 坐标轴 / 标签 / 边框），随主题切换
     pub colors: CanvasColors,
     time_sec: f64,
+    /// 视角矩阵插值动画（进行中为 `Some`）
+    proj_anim: Option<ProjAnim>,
 }
 
 impl Default for Plotter {
@@ -179,6 +189,7 @@ impl Plotter {
             show_axes: true,
             colors: CanvasColors::DARK,
             time_sec: 0.0,
+            proj_anim: None,
         }
     }
 
@@ -186,6 +197,65 @@ impl Plotter {
     #[inline]
     pub fn set_theme(&mut self, dark: bool) {
         self.colors = CanvasColors::for_theme(dark);
+    }
+
+    /// 启动视角矩阵插值动画：从当前矩阵平滑过渡到 `target`（时长约 0.3s）。
+    ///
+    /// 再次调用会以当前插值结果为新的起点，天然平滑衔接。
+    pub fn animate_proj_matrix_to(&mut self, target: Mat3F64) {
+        self.proj_anim = Some(ProjAnim {
+            start: self.camera.proj_matrix,
+            target,
+            t0: self.time_sec,
+            dur: PROJ_ANIM_DURATION,
+        });
+    }
+
+    /// 取消进行中的视角矩阵动画（用户直接操作相机时调用，避免互相覆盖）。
+    pub fn cancel_proj_anim(&mut self) {
+        self.proj_anim = None;
+    }
+
+    /// 是否有视角矩阵动画正在进行。
+    pub fn proj_anim_active(&self) -> bool {
+        self.proj_anim.is_some()
+    }
+
+    /// 按 `time_sec` 推进视角矩阵动画（`update` 内调用）。
+    fn tick_proj_anim(&mut self) {
+        let Some(anim) = self.proj_anim else {
+            return;
+        };
+        let s = ((self.time_sec - anim.t0) / anim.dur).clamp(0.0, 1.0);
+        // smoothstep 缓动：起止都柔
+        let e = s * s * (3.0 - 2.0 * s);
+
+        let mut m = [[0.0_f64; 3]; 3];
+        for i in 0..3 {
+            for j in 0..3 {
+                m[i][j] = (1.0 - e) * anim.start.m[i][j] + e * anim.target.m[i][j];
+            }
+        }
+        // 齐次矩阵整体缩放不改变射影意义：仅保持数值量级健康
+        let mut max_abs = 0.0_f64;
+        for row in m {
+            for v in row {
+                max_abs = max_abs.max(v.abs());
+            }
+        }
+        if max_abs > 20.0 || (max_abs > 1e-18 && max_abs < 0.05) {
+            let sc = 1.0 / max_abs;
+            for row in &mut m {
+                for v in row {
+                    *v *= sc;
+                }
+            }
+        }
+
+        self.camera.proj_matrix = Mat3F64 { m };
+        if s >= 1.0 {
+            self.proj_anim = None;
+        }
     }
 
     #[inline]
@@ -215,10 +285,11 @@ impl Plotter {
         self.d_dot_styles.clear();
     }
 
-    /// 绘图器帧更新入口：清缓冲 -> 更新时间 t -> 执行用户的命令式构造闭包
+    /// 绘图器帧更新入口：更新时间 t -> 推进视角动画 -> 清缓冲 -> 执行用户的命令式构造闭包
     pub fn update(&mut self, t: f64, f: impl FnOnce(&mut Self)) {
-        self.clear();
         self.time_sec = t;
+        self.tick_proj_anim();
+        self.clear();
         f(self);
     }
 
@@ -523,11 +594,7 @@ mod tests {
         let mut cam = ProjectiveCamera::default();
         cam.center = [10000.3, -5000.7];
         cam.proj_matrix = Mat3F64 {
-            m: [
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-                [0.015, 0.015, 1.0],
-            ],
+            m: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.015, 0.015, 1.0]],
         };
         let aspect = 4.0 / 3.0;
         let minor = grid_minor_step(&cam, aspect, [800.0, 600.0]);
@@ -561,10 +628,11 @@ mod tests {
         // 仅 2 条坐标轴在直线缓冲里（网格由 GPU 全屏着色器绘制）
         assert_eq!(data.axis_vertex_count, 12);
         assert_eq!(data.line_vertices.len(), 12);
-        assert!(data
-            .line_vertices
-            .iter()
-            .all(|v| v.color == CanvasColors::DARK.axis));
+        assert!(
+            data.line_vertices
+                .iter()
+                .all(|v| v.color == CanvasColors::DARK.axis)
+        );
 
         let mut p2 = Plotter::new();
         p2.show_grid = false;
@@ -582,5 +650,59 @@ mod tests {
         let data = p.prepare_draw_data([800.0, 600.0], 1.0);
         assert_eq!(data.axis_vertex_count, 12);
         assert!(data.line_vertices.len() > data.axis_vertex_count);
+    }
+
+    #[test]
+    fn proj_anim_interpolates_and_completes() {
+        let mut p = Plotter::new();
+        p.camera.proj_matrix = Mat3F64::SIDE_VIEW;
+        p.update(0.0, |_| {});
+        p.animate_proj_matrix_to(Mat3F64::IDENTITY);
+        assert!(p.proj_anim_active());
+
+        // t = 0.15（s = 0.5，smoothstep e = 0.5）：底行恰为起点与目标的中点
+        p.update(0.15, |_| {});
+        assert!(p.proj_anim_active());
+        let m = p.camera.proj_matrix.m;
+        assert!((m[2][0] - 0.175).abs() < 1e-12);
+        assert!(m[2][1].abs() < 1e-12);
+        assert!((m[2][2] - 1.0).abs() < 1e-12);
+        assert!((m[0][0] - 1.0).abs() < 1e-12);
+
+        // t = 0.31：动画结束，矩阵精确等于目标
+        p.update(0.31, |_| {});
+        assert!(!p.proj_anim_active());
+        assert_eq!(p.camera.proj_matrix.m, Mat3F64::IDENTITY.m);
+    }
+
+    #[test]
+    fn proj_anim_cancel_stops_and_keeps_matrix() {
+        let mut p = Plotter::new();
+        p.update(0.0, |_| {});
+        p.animate_proj_matrix_to(Mat3F64::FRONT_VIEW);
+        p.update(0.1, |_| {}); // 动画中途
+        assert!(p.proj_anim_active());
+        p.cancel_proj_anim();
+        let mid = p.camera.proj_matrix.m;
+        p.update(1.0, |_| {}); // 取消后不再推进
+        assert!(!p.proj_anim_active());
+        assert_eq!(p.camera.proj_matrix.m, mid);
+    }
+
+    #[test]
+    fn proj_anim_restart_uses_current_as_start() {
+        let mut p = Plotter::new();
+        p.camera.proj_matrix = Mat3F64::SIDE_VIEW;
+        p.update(0.0, |_| {});
+        p.animate_proj_matrix_to(Mat3F64::IDENTITY);
+        p.update(0.15, |_| {}); // 中途
+        let mid = p.camera.proj_matrix.m;
+        // 重新开启动画到前视：新起点应为当前插值
+        p.animate_proj_matrix_to(Mat3F64::FRONT_VIEW);
+        assert_eq!(p.camera.proj_matrix.m, mid);
+        p.update(0.151, |_| {}); // 前进一小步
+        let step = p.camera.proj_matrix.m;
+        assert!((step[2][0] - mid[2][0]).abs() > 0.0);
+        assert!((step[2][1] - mid[2][1]).abs() > 0.0); // 向 [0, 0.35] 前进
     }
 }

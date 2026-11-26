@@ -86,6 +86,10 @@ pub struct Gmk3App {
     start_time: Instant,
     paused: bool,
     paused_t: f64,
+    /// 本帧时间（每帧在 `ui()` 开头更新一次，帧内各处共用；与 `Plotter::time_sec` 同源）
+    time_sec: f64,
+    /// 交换左右键（交互配置）：开启后桌面端左右键职责互换、触屏单指变为倾斜视角
+    swap_buttons: bool,
     canvas_labels: Vec<CanvasLabel>,
     was_multi_touch: bool,
     mobile_active_tab: Option<MobileTab>,
@@ -311,6 +315,8 @@ impl Gmk3App {
             start_time: Instant::now(),
             paused: false,
             paused_t: 0.0,
+            time_sec: 0.0,
+            swap_buttons: false,
             canvas_labels: Vec::with_capacity(48),
             was_multi_touch: false,
             mobile_active_tab: None,
@@ -320,12 +326,13 @@ impl Gmk3App {
         }
     }
 
-    fn current_t(&self) -> f64 {
-        if self.paused {
+    /// 每帧推进一次时间（暂停则冻结），帧内各处共用 `self.time_sec`。
+    fn advance_time(&mut self) {
+        self.time_sec = if self.paused {
             self.paused_t
         } else {
             self.start_time.elapsed().as_secs_f64()
-        }
+        };
     }
 
     // ------------------------------------------------------------------
@@ -366,50 +373,72 @@ impl Gmk3App {
         ui.heading("属性栏");
         ui.separator();
 
+        // ---- 显示 ----
         ui.label("显示");
         ui.checkbox(&mut self.plotter.show_grid, "显示网格");
         ui.checkbox(&mut self.plotter.show_axes, "显示坐标轴");
         ui.separator();
 
-        let camera = self.plotter.camera_mut();
-        let mut changed = false;
+        // ---- 交互 ----
+        ui.label("交互");
+        ui.checkbox(&mut self.swap_buttons, "交换左右键");
+        ui.separator();
 
+        // ---- 视角矩阵 ----
         ui.label("视角矩阵");
 
-        egui::Grid::new("proj_matrix_grid")
-            .spacing([8.0, 8.0])
-            .show(ui, |ui| {
-                for row in 0..3 {
-                    for col in 0..3 {
-                        let response = ui.add(
-                            egui::DragValue::new(&mut camera.proj_matrix.m[row][col])
-                                .speed(0.005)
-                                .range(-100.0..=100.0),
-                        );
-                        changed |= response.changed();
+        let mut changed = false;
+        {
+            let camera = self.plotter.camera_mut();
+            egui::Grid::new("proj_matrix_grid")
+                .spacing([8.0, 8.0])
+                .show(ui, |ui| {
+                    for row in 0..3 {
+                        for col in 0..3 {
+                            let response = ui.add(
+                                egui::DragValue::new(&mut camera.proj_matrix.m[row][col])
+                                    .speed(0.005)
+                                    .range(-100.0..=100.0),
+                            );
+                            changed |= response.changed();
+                        }
+                        ui.end_row();
                     }
-                    ui.end_row();
-                }
-            });
-
-        if ui.button("重置视角矩阵").clicked() {
-            camera.proj_matrix = Mat3F64::IDENTITY;
-            changed = true;
+                });
         }
+        // 手动编辑矩阵：取消正在进行的视角动画，避免互相覆盖
+        if changed {
+            self.plotter.cancel_proj_anim();
+        }
+
+        ui.horizontal(|ui| {
+            if ui.button("重置为俯视").clicked() {
+                self.plotter.animate_proj_matrix_to(Mat3F64::IDENTITY);
+            }
+            if ui.button("前视视角").clicked() {
+                self.plotter.animate_proj_matrix_to(Mat3F64::FRONT_VIEW);
+            }
+            if ui.button("侧视视角").clicked() {
+                self.plotter.animate_proj_matrix_to(Mat3F64::SIDE_VIEW);
+            }
+        });
 
         ui.separator();
         ui.label("信息");
-        ui.label(format!(
-            "center: ({:.3}, {:.3})",
-            camera.center[0], camera.center[1]
-        ));
+        {
+            let camera = self.plotter.camera_mut();
+            ui.label(format!(
+                "center: ({:.3}, {:.3})",
+                camera.center[0], camera.center[1]
+            ));
 
-        ui.label(format!("half_height: {:.3}", camera.half_height));
-        ui.add(egui::DragValue::new(&mut camera.half_height).speed(0.05));
-        ui.label(format!(
-            "proj 可逆: {}",
-            camera.proj_matrix.inverse().is_some()
-        ));
+            ui.label(format!("half_height: {:.3}", camera.half_height));
+            ui.add(egui::DragValue::new(&mut camera.half_height).speed(0.05));
+            ui.label(format!(
+                "proj 可逆: {}",
+                camera.proj_matrix.inverse().is_some()
+            ));
+        }
 
         if changed && self.paused {
             ui.ctx().request_repaint();
@@ -621,7 +650,6 @@ impl Gmk3App {
     fn draw_canvas(
         &mut self,
         ui: &mut egui::Ui,
-        t: f64,
         is_portrait: bool,
         blocking_rect: Option<egui::Rect>,
     ) {
@@ -677,18 +705,26 @@ impl Gmk3App {
             _ => false,
         };
 
-        // 2. 桌面端鼠标右键双击：恢复视角变换矩阵（回到仿射视角）
+        // 2. 双击倾斜键：视角矩阵插值动画复位（回到仿射视角）
+        //    交换左右键后为左键双击；触屏时 egui 把触摸映射为主键，
+        //    因此交换后触屏双击（双点）即复位。
+        let (pan_btn, tilt_btn) = if self.swap_buttons {
+            (egui::PointerButton::Secondary, egui::PointerButton::Primary)
+        } else {
+            (egui::PointerButton::Primary, egui::PointerButton::Secondary)
+        };
         if !multi_touch_active
             && !pointer_blocked
-            && response.double_clicked_by(egui::PointerButton::Secondary)
+            && response.double_clicked_by(tilt_btn)
         {
-            self.plotter.camera_mut().proj_matrix = Mat3F64::IDENTITY;
+            self.plotter.animate_proj_matrix_to(Mat3F64::IDENTITY);
         }
-        // 3. 桌面端鼠标右键：转动射影视角（直接更新 proj_matrix）
+        // 3. 拖动倾斜键：转动射影视角（直接更新 proj_matrix，并取消进行中的动画）
         else if !multi_touch_active
             && !pointer_blocked
-            && response.dragged_by(egui::PointerButton::Secondary)
+            && response.dragged_by(tilt_btn)
         {
+            self.plotter.cancel_proj_anim();
             let delta = response.drag_delta();
             let dx_ndc = (2.6 * delta.x / (0.5 * canvas_rect.width())) as f64;
             let dy_ndc = (2.6 * (-delta.y) / (0.5 * canvas_rect.height())) as f64;
@@ -696,12 +732,11 @@ impl Gmk3App {
                 .camera_mut()
                 .tilt_by_ndc_delta(dx_ndc, dy_ndc, aspect);
         }
-        // 4. 左键/单指/中键拖动：平移画布（屏蔽双指期间及刚抬起一指的过渡帧）
+        // 4. 拖动平移键 / 中键：平移画布（屏蔽双指期间及刚抬起一指的过渡帧）
         else if !multi_touch_active
             && !self.was_multi_touch
             && !pointer_blocked
-            && (response.dragged_by(egui::PointerButton::Primary)
-                || response.dragged_by(egui::PointerButton::Middle))
+            && (response.dragged_by(pan_btn) || response.dragged_by(egui::PointerButton::Middle))
         {
             let delta = response.drag_delta();
             let dx_ndc = (delta.x / (0.5 * canvas_rect.width())) as f64;
@@ -713,7 +748,7 @@ impl Gmk3App {
 
         self.was_multi_touch = multi_touch_active;
 
-        // 4. 桌面端滚轮 / 笔记本触控板缩放（以光标为中心）
+        // 5. 桌面端滚轮 / 笔记本触控板缩放（以光标为中心）
         if !multi_touch_active && !pointer_blocked && response.hovered() {
             let (scroll_y, pinch_zoom, hover_pos) = ui.input(|i| {
                 (
@@ -741,6 +776,7 @@ impl Gmk3App {
         let dark = ui.visuals().dark_mode;
         // 底图配色（背景 / 网格 / 坐标轴 / 标签）跟随主题
         self.plotter.set_theme(dark);
+        let t = self.time_sec;
         let monkey = &mut self.monkey;
         self.plotter.update(t, |p| {
             monkey.solve();
@@ -789,7 +825,8 @@ impl Gmk3App {
 
 impl eframe::App for Gmk3App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let t = self.current_t();
+        // 每帧推进一次时间（暂停则冻结），帧内各处共用 self.time_sec
+        self.advance_time();
         let screen_rect = ui.max_rect();
         let is_portrait = screen_rect.height() > screen_rect.width();
 
@@ -812,7 +849,7 @@ impl eframe::App for Gmk3App {
 
             // 3. 中间最下层绘图区（无空隙）
             egui::CentralPanel::no_frame()
-                .show(ui, |ui| self.draw_canvas(ui, t, true, blocking_rect));
+                .show(ui, |ui| self.draw_canvas(ui, true, blocking_rect));
 
             // 4. 上浮覆盖层（从底栏上边缘向上展开）
             if let Some(geom) = sheet_geom {
@@ -832,7 +869,7 @@ impl eframe::App for Gmk3App {
 
             egui::Panel::left("object_list").show(ui, |ui| self.draw_object_list(ui));
 
-            egui::CentralPanel::default().show(ui, |ui| self.draw_canvas(ui, t, false, None));
+            egui::CentralPanel::default().show(ui, |ui| self.draw_canvas(ui, false, None));
         }
 
         if !self.paused {
