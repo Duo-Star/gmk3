@@ -22,6 +22,50 @@ const GRID_MINOR_LINE_PX: f32 = 1.0;
 const GRID_MAJOR_LINE_PX: f32 = 1.15;
 const AXIS_WIDTH_PX: f32 = 1.3;
 
+/// 灭线：核心细线半宽与光晕高斯宽度（px）
+const HORIZON_LINE_PX: f32 = 0.8;
+const HORIZON_GLOW_PX: f32 = 16.0;
+
+/// 网格显示模式。
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum GridMode {
+    /// 不显示网格
+    Off,
+    /// 仅主要网格
+    Major,
+    /// 主要 + 次要网格（默认）
+    #[default]
+    Full,
+}
+
+impl GridMode {
+    /// 全部模式与 UI 文案。
+    pub const ALL: [(GridMode, &'static str); 3] = [
+        (GridMode::Off, "无网格"),
+        (GridMode::Major, "主要网格"),
+        (GridMode::Full, "主要和次要网格"),
+    ];
+
+    /// UI 文案。
+    pub fn label(self) -> &'static str {
+        match self {
+            GridMode::Off => "无网格",
+            GridMode::Major => "主要网格",
+            GridMode::Full => "主要和次要网格",
+        }
+    }
+
+    /// 着色器编号（0/1/2）。
+    #[inline]
+    pub fn as_u32(self) -> u32 {
+        match self {
+            GridMode::Off => 0,
+            GridMode::Major => 1,
+            GridMode::Full => 2,
+        }
+    }
+}
+
 /// 美观步长（nice numbers）算法 —— Heckbert, Graphics Gems I (1990)。
 /// 把任意正数舍入到 1-2-5 序列：`{1, 2, 5} × 10ᵏ`。
 pub fn nice_step(raw: f64) -> f64 {
@@ -141,7 +185,7 @@ struct ProjAnim {
 }
 
 /// 视角矩阵动画时长（秒）。
-const PROJ_ANIM_DURATION: f64 = 0.2;
+const PROJ_ANIM_DURATION: f64 = 0.24;
 
 /// 命令式几何绘图器：每帧重置缓冲、执行构造更新、打包提交给 wgpu。
 pub struct Plotter {
@@ -156,11 +200,15 @@ pub struct Plotter {
     d_dot_styles: Vec<DdotStyle>,
 
     pub camera: ProjectiveCamera,
-    /// 是否显示无限射影网格（GPU 片元着色器绘制，默认开启）
-    pub show_grid: bool,
+    /// 网格显示模式（无 / 仅主网格 / 主+次网格，默认主+次）
+    pub grid_mode: GridMode,
     /// 是否显示世界坐标系坐标轴（默认开启）
     pub show_axes: bool,
-    /// 底图配色（背景 / 网格 / 坐标轴 / 标签 / 边框），随主题切换
+    /// 是否显示坐标刻度文字（独立于网格，默认开启）
+    pub show_tick_labels: bool,
+    /// 是否显示灭线（无穷远直线处的细线 + 光晕，默认关闭）
+    pub show_horizon: bool,
+    /// 底图配色（背景 / 网格 / 坐标轴 / 标签 / 边框 / 灭线），随主题切换
     pub colors: CanvasColors,
     time_sec: f64,
     /// 视角矩阵插值动画（进行中为 `Some`）
@@ -185,8 +233,10 @@ impl Plotter {
             conic_styles: Vec::new(),
             d_dot_styles: Vec::new(),
             camera: ProjectiveCamera::default(),
-            show_grid: true,
+            grid_mode: GridMode::Full,
             show_axes: true,
+            show_tick_labels: true,
+            show_horizon: false,
             colors: CanvasColors::DARK,
             time_sec: 0.0,
             proj_anim: None,
@@ -199,7 +249,7 @@ impl Plotter {
         self.colors = CanvasColors::for_theme(dark);
     }
 
-    /// 启动视角矩阵插值动画：从当前矩阵平滑过渡到 `target`（时长约 0.3s）。
+    /// 启动视角矩阵插值动画：从当前矩阵平滑过渡到 `target`（时长约 0.24s）。
     ///
     /// 再次调用会以当前插值结果为新的起点，天然平滑衔接。
     pub fn animate_proj_matrix_to(&mut self, target: Mat3F64) {
@@ -480,11 +530,26 @@ impl Plotter {
             push_projected_dot(&d_dot.q(), &h, r, style.color, 0, 0, &mut point_instances);
         }
 
+        // 4. 灭线（无穷远直线）在 NDC 的系数（归一化，|(a,b)| = 1）
+        let l_inf_ndc = h_inv.mul_cov([0.0, 0.0, 1.0]);
+        let n_inf = (l_inf_ndc[0] * l_inf_ndc[0] + l_inf_ndc[1] * l_inf_ndc[1]).sqrt();
+        let horizon_abc = if n_inf > 1e-12 {
+            [
+                (l_inf_ndc[0] / n_inf) as f32,
+                (l_inf_ndc[1] / n_inf) as f32,
+                (l_inf_ndc[2] / n_inf) as f32,
+                0.0,
+            ]
+        } else {
+            // 灭线在 NDC 的无穷远处（仿射视角）：a=b=0，着色器直接跳过
+            [0.0, 0.0, 1.0, 0.0]
+        };
+
         let gm = &grid_inv.m;
         PreparedDrawData {
             uniforms: CanvasUniforms {
                 viewport_px: [w_px, h_px],
-                show_grid: u32::from(self.show_grid),
+                grid_mode: self.grid_mode.as_u32(),
                 minor_line_px: GRID_MINOR_LINE_PX * pixels_per_point,
                 grid_inv_col0: [gm[0][0] as f32, gm[1][0] as f32, gm[2][0] as f32, 0.0],
                 grid_inv_col1: [gm[0][1] as f32, gm[1][1] as f32, gm[2][1] as f32, 0.0],
@@ -493,7 +558,12 @@ impl Plotter {
                 grid_major_color: self.colors.grid_major,
                 major_line_px: GRID_MAJOR_LINE_PX * pixels_per_point,
                 major_every: MAJOR_EVERY as f32,
-                _pad: [0.0, 0.0],
+                show_horizon: u32::from(self.show_horizon),
+                horizon_line_px: HORIZON_LINE_PX * pixels_per_point,
+                horizon_glow_px: HORIZON_GLOW_PX * pixels_per_point,
+                _pad0: [0.0, 0.0, 0.0],
+                horizon_abc,
+                horizon_color: self.colors.horizon,
             },
             axis_vertex_count,
             line_vertices,
@@ -510,8 +580,8 @@ impl Plotter {
     ) {
         collect_canvas_labels(
             &self.camera,
-            self.show_grid,
             self.show_axes,
+            self.show_tick_labels,
             viewport_px,
             pixels_per_point,
             &self.colors,
@@ -622,9 +692,11 @@ mod tests {
     #[test]
     fn prepare_draws_grid_uniform_and_axes() {
         let p = Plotter::new();
-        assert!(p.show_grid && p.show_axes);
+        assert_eq!(p.grid_mode, GridMode::Full);
+        assert!(p.show_axes && p.show_tick_labels && !p.show_horizon);
         let data = p.prepare_draw_data([800.0, 600.0], 1.0);
-        assert_eq!(data.uniforms.show_grid, 1);
+        assert_eq!(data.uniforms.grid_mode, 2);
+        assert_eq!(data.uniforms.show_horizon, 0);
         // 仅 2 条坐标轴在直线缓冲里（网格由 GPU 全屏着色器绘制）
         assert_eq!(data.axis_vertex_count, 12);
         assert_eq!(data.line_vertices.len(), 12);
@@ -635,12 +707,41 @@ mod tests {
         );
 
         let mut p2 = Plotter::new();
-        p2.show_grid = false;
+        p2.grid_mode = GridMode::Off;
         p2.show_axes = false;
         let data2 = p2.prepare_draw_data([800.0, 600.0], 1.0);
-        assert_eq!(data2.uniforms.show_grid, 0);
+        assert_eq!(data2.uniforms.grid_mode, 0);
         assert!(data2.line_vertices.is_empty());
         assert_eq!(data2.axis_vertex_count, 0);
+    }
+
+    #[test]
+    fn grid_modes_map_to_uniform() {
+        let mut p = Plotter::new();
+        for (mode, code) in [
+            (GridMode::Off, 0),
+            (GridMode::Major, 1),
+            (GridMode::Full, 2),
+        ] {
+            p.grid_mode = mode;
+            let data = p.prepare_draw_data([800.0, 600.0], 1.0);
+            assert_eq!(data.uniforms.grid_mode, code, "{mode:?}");
+        }
+    }
+
+    #[test]
+    fn horizon_line_is_normalized_ndc_coefficients() {
+        let mut p = Plotter::new();
+        p.show_horizon = true;
+        // 前视视角：灭线进入画面
+        p.camera.proj_matrix = Mat3F64::FRONT_VIEW;
+        let data = p.prepare_draw_data([800.0, 600.0], 1.0);
+        assert_eq!(data.uniforms.show_horizon, 1);
+        let n =
+            (data.uniforms.horizon_abc[0].powi(2) + data.uniforms.horizon_abc[1].powi(2)).sqrt();
+        assert!((n - 1.0).abs() < 1e-6, "灭线系数 (a,b) 应归一化");
+        // 前视：灭线在 NDC 为 y = const 的横线（a ≈ 0）
+        assert!(data.uniforms.horizon_abc[0].abs() < 1e-6);
     }
 
     #[test]
@@ -660,8 +761,8 @@ mod tests {
         p.animate_proj_matrix_to(Mat3F64::IDENTITY);
         assert!(p.proj_anim_active());
 
-        // t = 0.15（s = 0.5，smoothstep e = 0.5）：底行恰为起点与目标的中点
-        p.update(0.15, |_| {});
+        // t = 0.12（s = 0.5，smoothstep e = 0.5）：底行恰为起点与目标的中点
+        p.update(0.12, |_| {});
         assert!(p.proj_anim_active());
         let m = p.camera.proj_matrix.m;
         assert!((m[2][0] - 0.175).abs() < 1e-12);
@@ -669,8 +770,8 @@ mod tests {
         assert!((m[2][2] - 1.0).abs() < 1e-12);
         assert!((m[0][0] - 1.0).abs() < 1e-12);
 
-        // t = 0.31：动画结束，矩阵精确等于目标
-        p.update(0.31, |_| {});
+        // t = 0.25：动画结束，矩阵精确等于目标
+        p.update(0.25, |_| {});
         assert!(!p.proj_anim_active());
         assert_eq!(p.camera.proj_matrix.m, Mat3F64::IDENTITY.m);
     }

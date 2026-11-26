@@ -176,8 +176,14 @@ fn conic_style(s: &StyleSpec, dark: bool, label: String, selected: bool) -> Coni
     }
 }
 
+/// 选中光晕（GeoGebra 风格）：同色、更宽、更淡，垫在对象本身下层。
+const SELECTED_HALO_WIDTH_MULT: f32 = 2.5;
+const SELECTED_HALO_ALPHA: f32 = 0.30;
+
 /// 把解算结果提交到 `Plotter`（`Ok` 状态且可见的对象才绘制；不清空缓冲）。
 ///
+/// 直线 / 圆锥曲线选中时先提交一层光晕（宽 ×2.5、透明度 ×0.3），
+/// 再提交对象本身——同缓冲按提交顺序绘制，光晕自然位于下层。
 /// Qdot / XLine / DXLine 暂不绘制（注册表也不产出）。
 pub(crate) fn draw_into(monkey: &Monkey, plotter: &mut Plotter, dark: bool) {
     if monkey.solved.len() != monkey.stmts.len() {
@@ -203,9 +209,21 @@ pub(crate) fn draw_into(monkey: &Monkey, plotter: &mut Plotter, dark: bool) {
                 plotter.draw_d_dot_with(dd, ddot_style(style, dark, label, selected));
             }
             Some(GeoObject::Line(l)) => {
+                if selected {
+                    let mut halo = line_style(style, dark, label.clone(), false);
+                    halo.width_px *= SELECTED_HALO_WIDTH_MULT;
+                    halo.color[3] *= SELECTED_HALO_ALPHA;
+                    plotter.draw_line_with(l, halo);
+                }
                 plotter.draw_line_with(l, line_style(style, dark, label, selected));
             }
             Some(GeoObject::Conic(c)) => {
+                if selected {
+                    let mut halo = conic_style(style, dark, label.clone(), false);
+                    halo.width_px *= SELECTED_HALO_WIDTH_MULT;
+                    halo.color[3] *= SELECTED_HALO_ALPHA;
+                    plotter.draw_conic_with(c, halo);
+                }
                 plotter.draw_conic_with(c, conic_style(style, dark, label, selected));
             }
             _ => {}
@@ -390,6 +408,50 @@ mod tests {
         assert_eq!(plotter.dots().0.len(), 5); // d1 d2 p x y
         assert_eq!(plotter.lines().0.len(), 1); // l
         assert_eq!(plotter.conics().0.len(), 1); // c
+    }
+
+    #[test]
+    fn selected_line_draws_halo_first() {
+        let mut monkey =
+            Monkey::from_dsl("a d_xy_ff 1 1\nb d_xy_ff 2 3\nl l_join_dd a b\n").expect("解析成功");
+        monkey.solve();
+        monkey.set_selected(monkey.id_of("l").unwrap(), true);
+        let mut plotter = Plotter::new();
+        monkey.draw(&mut plotter, false);
+        let (lines, styles) = plotter.lines();
+        assert_eq!(lines.len(), 2, "选中直线应先画光晕再画本体");
+        // 光晕：更宽、更淡
+        assert!(styles[0].width_px > styles[1].width_px);
+        assert_eq!(styles[0].width_px / styles[1].width_px, 2.5);
+        assert!(styles[0].color[3] < styles[1].color[3]);
+        assert_eq!(styles[0].color[3], styles[1].color[3] * 0.30);
+        assert_eq!(styles[0].color[0..3], styles[1].color[0..3], "光晕同色");
+    }
+
+    #[test]
+    fn selected_conic_draws_halo_first() {
+        let mut monkey = Monkey::from_dsl(
+            "a d_xy_ff 0 0\nb d_xy_ff 2 0\nc c_circle_cp_dd a b\n",
+        )
+        .expect("解析成功");
+        monkey.solve();
+        monkey.set_selected(monkey.id_of("c").unwrap(), true);
+        let mut plotter = Plotter::new();
+        monkey.draw(&mut plotter, false);
+        let (conics, styles) = plotter.conics();
+        assert_eq!(conics.len(), 2);
+        assert!(styles[0].width_px > styles[1].width_px);
+        assert!(styles[0].color[3] < styles[1].color[3]);
+    }
+
+    #[test]
+    fn unselected_line_draws_once() {
+        let mut monkey =
+            Monkey::from_dsl("a d_xy_ff 1 1\nb d_xy_ff 2 3\nl l_join_dd a b\n").expect("解析成功");
+        monkey.solve();
+        let mut plotter = Plotter::new();
+        monkey.draw(&mut plotter, false);
+        assert_eq!(plotter.lines().0.len(), 1);
     }
 
     #[test]

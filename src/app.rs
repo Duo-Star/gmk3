@@ -2,7 +2,7 @@
 
 use crate::canvas::camera::Mat3F64;
 use crate::canvas::labels::{CanvasLabel, LabelAnchor};
-use crate::canvas::plotter::Plotter;
+use crate::canvas::plotter::{GridMode, Plotter};
 use crate::canvas::renderer::{CanvasCallback, CanvasGpuResources};
 use crate::gmk3_app::telescope_icon::telescope_line_icon;
 use crate::monkey::Monkey;
@@ -375,8 +375,16 @@ impl Gmk3App {
 
         // ---- 显示 ----
         ui.label("显示");
-        ui.checkbox(&mut self.plotter.show_grid, "显示网格");
+        egui::ComboBox::from_id_salt("grid_mode_combo")
+            .selected_text(self.plotter.grid_mode.label())
+            .show_ui(ui, |ui| {
+                for (mode, name) in GridMode::ALL {
+                    ui.selectable_value(&mut self.plotter.grid_mode, mode, name);
+                }
+            });
         ui.checkbox(&mut self.plotter.show_axes, "显示坐标轴");
+        ui.checkbox(&mut self.plotter.show_tick_labels, "显示刻度文字");
+        ui.checkbox(&mut self.plotter.show_horizon, "显示灭线");
         ui.separator();
 
         // ---- 交互 ----

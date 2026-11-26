@@ -1,6 +1,7 @@
 use crate::canvas::camera::{
     CanvasUniforms, ConicInstance, LineVertex, PointInstance, PreparedDrawData,
 };
+use crate::canvas::styles::CanvasColors;
 use eframe::egui_wgpu::{CallbackResources, CallbackTrait, ScreenDescriptor};
 use egui::PaintCallbackInfo;
 use wgpu::util::DeviceExt;
@@ -67,6 +68,7 @@ pub struct CanvasGpuResources {
     point_ibo: DynamicGpuBuffer,
 
     show_grid: bool,
+    show_horizon: bool,
     line_vertex_count: u32,
     axis_vertex_count: u32,
     conic_instance_count: u32,
@@ -82,16 +84,21 @@ impl CanvasGpuResources {
 
         let init_uniforms = CanvasUniforms {
             viewport_px: [800.0, 600.0],
-            show_grid: 1,
+            grid_mode: 2,
             minor_line_px: 1.0,
             grid_inv_col0: [1.0, 0.0, 0.0, 0.0],
             grid_inv_col1: [0.0, 1.0, 0.0, 0.0],
             grid_inv_col2: [0.0, 0.0, 1.0, 0.0],
-            grid_minor_color: [0.16, 0.16, 0.17, 1.0],
-            grid_major_color: [0.30, 0.30, 0.32, 1.0],
+            grid_minor_color: CanvasColors::DARK.grid_minor,
+            grid_major_color: CanvasColors::DARK.grid_major,
             major_line_px: 1.15,
             major_every: 5.0,
-            _pad: [0.0, 0.0],
+            show_horizon: 0,
+            horizon_line_px: 0.8,
+            horizon_glow_px: 16.0,
+            _pad0: [0.0, 0.0, 0.0],
+            horizon_abc: [0.0, 0.0, 1.0, 0.0],
+            horizon_color: CanvasColors::DARK.horizon,
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("gmk3_canvas_uniforms"),
@@ -284,6 +291,7 @@ impl CanvasGpuResources {
                 1024,
             ),
             show_grid: true,
+            show_horizon: false,
             line_vertex_count: 0,
             axis_vertex_count: 0,
             conic_instance_count: 0,
@@ -357,7 +365,8 @@ impl CallbackTrait for CanvasCallback {
             bytemuck::bytes_of(&self.data.uniforms),
         );
 
-        res.show_grid = self.data.uniforms.show_grid != 0;
+        res.show_grid = self.data.uniforms.grid_mode != 0;
+        res.show_horizon = self.data.uniforms.show_horizon != 0;
         res.line_vertex_count = self.data.line_vertices.len() as u32;
         res.axis_vertex_count = self.data.axis_vertex_count as u32;
         res.line_vbo.write(
@@ -393,8 +402,8 @@ impl CallbackTrait for CanvasCallback {
             return;
         };
 
-        // 0. 无限射影网格（O(1) 全屏着色器）
-        if res.show_grid {
+        // 0. 底图层：无限射影网格 + 灭线光晕（O(1) 全屏着色器）
+        if res.show_grid || res.show_horizon {
             render_pass.set_pipeline(&res.grid_pipeline);
             render_pass.set_bind_group(0, &res.uniform_bind_group, &[]);
             render_pass.draw(0..6, 0..1);
@@ -436,7 +445,12 @@ impl CallbackTrait for CanvasCallback {
 
 #[cfg(test)]
 mod tests {
-    /// 用 naga 在编译期校验着色器（设备上才会暴露的校验错误提前在这里报出来）。
+    use super::*;
+    use std::mem::size_of;
+
+    /// 用 naga 在编译期校验着色器（设备上才会暴露的校验错误提前在这里报出来），
+    /// 并把 WGSL 的 `CanvasUniforms` 结构大小与 Rust 侧逐一比对，
+    /// 防止 vec3 对齐（16）/ padding 等跨语言布局错位。
     #[test]
     fn shaders_wgsl_validates() {
         let source = include_str!("shaders.wgsl");
@@ -449,5 +463,27 @@ mod tests {
         validator
             .validate(&module)
             .expect("WGSL 校验失败（顶点/片元 I/O 不匹配等）");
+
+        // 跨语言布局一致性：WGSL 结构大小必须等于 Rust 结构大小
+        let mut layouter = wgpu::naga::proc::Layouter::default();
+        layouter
+            .update(wgpu::naga::proc::GlobalCtx {
+                types: &module.types,
+                constants: &module.constants,
+                overrides: &module.overrides,
+                global_expressions: &module.global_expressions,
+            })
+            .expect("WGSL 布局计算失败");
+        let (handle, ty) = module
+            .types
+            .iter()
+            .find(|(_, t)| t.name.as_deref() == Some("CanvasUniforms"))
+            .expect("应存在 CanvasUniforms 结构");
+        assert!(matches!(ty.inner, wgpu::naga::TypeInner::Struct { .. }));
+        assert_eq!(
+            layouter[handle].size as usize,
+            size_of::<CanvasUniforms>(),
+            "WGSL 与 Rust 的 CanvasUniforms 结构大小不一致（检查 vec3 对齐 / padding）"
+        );
     }
 }

@@ -1,6 +1,6 @@
 struct CanvasUniforms {
     viewport_px: vec2<f32>,
-    show_grid: u32,
+    grid_mode: u32,
     minor_line_px: f32,
     grid_inv_col0: vec4<f32>,
     grid_inv_col1: vec4<f32>,
@@ -9,7 +9,15 @@ struct CanvasUniforms {
     grid_major_color: vec4<f32>,
     major_line_px: f32,
     major_every: f32,
-    _pad: vec2<f32>,
+    show_horizon: u32,
+    horizon_line_px: f32,
+    horizon_glow_px: f32,
+    // 三个 f32 标量把 horizon_abc 顶到 16 对齐（勿用 vec3：WGSL vec3 对齐 16，会撑大结构）
+    _pad0a: f32,
+    _pad0b: f32,
+    _pad0c: f32,
+    horizon_abc: vec4<f32>,
+    horizon_color: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -65,56 +73,81 @@ fn eval_grid_coverage(uv: vec2<f32>, uv_deriv: vec2<f32>, line_px: f32, max_frac
 
 @fragment
 fn fs_grid(in: GridVertexOut) -> @location(0) vec4<f32> {
-    if (u.show_grid == 0u) {
+    // ---- 灭线光晕（最底层）：无穷远直线处的细核心线 + 静态光晕 ----
+    var h_a: f32 = 0.0;
+    var h_rgb: vec3<f32> = vec3<f32>(0.0);
+    if (u.show_horizon == 1u) {
+        let ab2 = dot(u.horizon_abc.xy, u.horizon_abc.xy);
+        if (ab2 > 1e-12) {
+            let d_ndc = dot(u.horizon_abc.xy, in.ndc) + u.horizon_abc.z;
+            let d_px = d_ndc * (0.5 * max(u.viewport_px.y, 1.0));
+            let g_w = max(u.horizon_glow_px, 1.0);
+            let glow = exp(-(d_px * d_px) / (g_w * g_w));
+            let c_w = max(u.horizon_line_px, 0.5);
+            let core = exp(-(d_px * d_px) / (c_w * c_w));
+            h_a = u.horizon_color.a * min(0.22 * glow + 0.85 * core, 1.0);
+            h_rgb = u.horizon_color.rgb;
+        }
+    }
+
+    // ---- 网格（画在灭线之上）----
+    var g_a: f32 = 0.0;
+    var g_rgb: vec3<f32> = vec3<f32>(0.0);
+    if (u.grid_mode > 0u) {
+        let c0 = u.grid_inv_col0.xyz;
+        let c1 = u.grid_inv_col1.xyz;
+        let c2 = u.grid_inv_col2.xyz;
+
+        let w = c0 * in.ndc.x + c1 * in.ndc.y + c2;
+        let ndc_per_px = 2.0 / max(u.viewport_px, vec2<f32>(1.0));
+        let dw_dx = c0 * ndc_per_px.x;
+        let dw_dy = c1 * ndc_per_px.y;
+
+        let wz = w.z;
+        let wz_safe = select(wz, select(1e-7, -1e-7, wz < 0.0), abs(wz) < 1e-7);
+        let uv = w.xy / wz_safe;
+
+        // 商法则解析导数：跨越 w_z = 0（地平线）时无 2x2 quad 块状伪影且永不归零
+        let inv_wz2 = 1.0 / max(wz * wz, 1e-12);
+        let du_dx = (wz * dw_dx.x - w.x * dw_dx.z) * inv_wz2;
+        let du_dy = (wz * dw_dy.x - w.x * dw_dy.z) * inv_wz2;
+        let dv_dx = (wz * dw_dx.y - w.y * dw_dx.z) * inv_wz2;
+        let dv_dy = (wz * dw_dy.y - w.y * dw_dy.z) * inv_wz2;
+
+        var uv_deriv = vec2<f32>(
+            length(vec2<f32>(du_dx, du_dy)),
+            length(vec2<f32>(dv_dx, dv_dy))
+        );
+
+        // 若像素距离地平线 w_z = 0 不足 1 像素（含灭点 w_x = w_z = 0），强制进入过密均质区
+        let grad_wz_px = length(vec2<f32>(dw_dx.z, dw_dy.z));
+        if (grad_wz_px > 1e-8 && abs(wz) < grad_wz_px) {
+            uv_deriv = max(uv_deriv, vec2<f32>(u.major_every));
+        }
+
+        var minor_a: f32 = 0.0;
+        if (u.grid_mode == 2u) {
+            let minor_cov = eval_grid_coverage(uv, uv_deriv, u.minor_line_px, 0.085);
+            minor_a = u.grid_minor_color.a * minor_cov;
+        }
+        let major_uv = uv / u.major_every;
+        let major_deriv = uv_deriv / u.major_every;
+        let major_cov = eval_grid_coverage(major_uv, major_deriv, u.major_line_px, 0.05);
+        let major_a = u.grid_major_color.a * major_cov;
+
+        g_a = major_a + minor_a * (1.0 - major_a);
+        g_rgb = (u.grid_major_color.rgb * major_a
+            + u.grid_minor_color.rgb * minor_a * (1.0 - major_a))
+            / max(g_a, 1e-6);
+    }
+
+    // 合成：灭线光晕在下，网格在上
+    let a = g_a + h_a * (1.0 - g_a);
+    if (a <= 0.001) {
         discard;
     }
-
-    let c0 = u.grid_inv_col0.xyz;
-    let c1 = u.grid_inv_col1.xyz;
-    let c2 = u.grid_inv_col2.xyz;
-
-    let w = c0 * in.ndc.x + c1 * in.ndc.y + c2;
-    let ndc_per_px = 2.0 / max(u.viewport_px, vec2<f32>(1.0));
-    let dw_dx = c0 * ndc_per_px.x;
-    let dw_dy = c1 * ndc_per_px.y;
-
-    let wz = w.z;
-    let wz_safe = select(wz, select(1e-7, -1e-7, wz < 0.0), abs(wz) < 1e-7);
-    let uv = w.xy / wz_safe;
-
-    // 商法则解析导数：跨越 w_z = 0（地平线）时无 2x2 quad 块状伪影且永不归零
-    let inv_wz2 = 1.0 / max(wz * wz, 1e-12);
-    let du_dx = (wz * dw_dx.x - w.x * dw_dx.z) * inv_wz2;
-    let du_dy = (wz * dw_dy.x - w.x * dw_dy.z) * inv_wz2;
-    let dv_dx = (wz * dw_dx.y - w.y * dw_dx.z) * inv_wz2;
-    let dv_dy = (wz * dw_dy.y - w.y * dw_dy.z) * inv_wz2;
-
-    var uv_deriv = vec2<f32>(
-        length(vec2<f32>(du_dx, du_dy)),
-        length(vec2<f32>(dv_dx, dv_dy))
-    );
-
-    // 若像素距离地平线 w_z = 0 不足 1 像素（含灭点 w_x = w_z = 0），强制进入过密均质区
-    let grad_wz_px = length(vec2<f32>(dw_dx.z, dw_dy.z));
-    if (grad_wz_px > 1e-8 && abs(wz) < grad_wz_px) {
-        uv_deriv = max(uv_deriv, vec2<f32>(u.major_every));
-    }
-
-    let minor_cov = eval_grid_coverage(uv, uv_deriv, u.minor_line_px, 0.085);
-    let major_uv = uv / u.major_every;
-    let major_deriv = uv_deriv / u.major_every;
-    let major_cov = eval_grid_coverage(major_uv, major_deriv, u.major_line_px, 0.05);
-
-    let minor_a = u.grid_minor_color.a * minor_cov;
-    let major_a = u.grid_major_color.a * major_cov;
-    let out_a = major_a + minor_a * (1.0 - major_a);
-    if (out_a <= 0.001) {
-        discard;
-    }
-
-    let out_premul_rgb = u.grid_major_color.rgb * major_a
-        + u.grid_minor_color.rgb * minor_a * (1.0 - major_a);
-    return vec4<f32>(out_premul_rgb / out_a, out_a);
+    let rgb = (g_rgb * g_a + h_rgb * h_a * (1.0 - g_a)) / a;
+    return vec4<f32>(rgb, a);
 }
 
 // ------------------------------------------------------------------

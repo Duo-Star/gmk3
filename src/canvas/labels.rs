@@ -728,15 +728,15 @@ fn pick_closer_vertical_edge(
 /// 生成本帧全部画布文字标签（追加到 `out` 中，便于外层复用内存）
 pub fn collect_canvas_labels(
     camera: &ProjectiveCamera,
-    show_grid: bool,
     show_axes: bool,
+    show_tick_labels: bool,
     viewport_px: [f32; 2],
     pixels_per_point: f32,
     colors: &CanvasColors,
     out: &mut Vec<CanvasLabel>,
 ) {
     out.clear();
-    if !show_grid && !show_axes {
+    if !show_axes && !show_tick_labels {
         return;
     }
 
@@ -762,7 +762,7 @@ pub fn collect_canvas_labels(
 
     let mut placed_rects: Vec<[f32; 4]> = Vec::with_capacity(48);
 
-    // 1. 若坐标轴开启，优先放置 "X" / "Y" 轴名称（放在刻度对侧）
+    // 1. XY 轴名称跟随「显示坐标轴」（放在刻度对侧）
     if show_axes {
         if let Some((p0, p1)) = x_seg {
             emit_axis_name_label(
@@ -796,7 +796,8 @@ pub fn collect_canvas_labels(
         }
     }
 
-    if !show_grid {
+    // 刻度文字独立开关（与网格无关）
+    if !show_tick_labels {
         return;
     }
 

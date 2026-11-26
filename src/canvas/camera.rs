@@ -326,7 +326,8 @@ pub fn extrude_line_quad(
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CanvasUniforms {
     pub viewport_px: [f32; 2],
-    pub show_grid: u32,
+    /// 网格模式：0 无网格 / 1 仅主网格 / 2 主+次网格
+    pub grid_mode: u32,
     pub minor_line_px: f32,
     /// NDC -> 次网格单位坐标系的 3x3 逆变换矩阵（按列存储，xyz 有效）
     pub grid_inv_col0: [f32; 4],
@@ -336,7 +337,16 @@ pub struct CanvasUniforms {
     pub grid_major_color: [f32; 4],
     pub major_line_px: f32,
     pub major_every: f32,
-    pub _pad: [f32; 2],
+    pub show_horizon: u32,
+    /// 灭线核心细线半宽（px）
+    pub horizon_line_px: f32,
+    /// 灭线光晕高斯宽度（px）
+    pub horizon_glow_px: f32,
+    /// 显式填充：把 `horizon_abc` 顶到 16 字节对齐（WGSL vec4 对齐 16）
+    pub(crate) _pad0: [f32; 3],
+    /// 归一化 NDC 灭线系数 `a·x + b·y + c = 0`（|(a,b)| = 1），w 未用
+    pub horizon_abc: [f32; 4],
+    pub horizon_color: [f32; 4],
 }
 
 #[repr(C)]
@@ -382,6 +392,28 @@ pub struct PreparedDrawData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem::{offset_of, size_of};
+
+    /// Rust 与 WGSL 的 uniform 结构布局必须逐字段一致
+    /// （WGSL vec4 对齐 16，Rust `[f32;4]` 对齐 4，偏移靠显式 padding 保证）。
+    #[test]
+    fn canvas_uniforms_layout_matches_wgsl() {
+        assert_eq!(size_of::<CanvasUniforms>(), 160);
+        assert_eq!(offset_of!(CanvasUniforms, viewport_px), 0);
+        assert_eq!(offset_of!(CanvasUniforms, grid_mode), 8);
+        assert_eq!(offset_of!(CanvasUniforms, grid_inv_col0), 16);
+        assert_eq!(offset_of!(CanvasUniforms, grid_inv_col1), 32);
+        assert_eq!(offset_of!(CanvasUniforms, grid_inv_col2), 48);
+        assert_eq!(offset_of!(CanvasUniforms, grid_minor_color), 64);
+        assert_eq!(offset_of!(CanvasUniforms, grid_major_color), 80);
+        assert_eq!(offset_of!(CanvasUniforms, major_line_px), 96);
+        assert_eq!(offset_of!(CanvasUniforms, major_every), 100);
+        assert_eq!(offset_of!(CanvasUniforms, show_horizon), 104);
+        assert_eq!(offset_of!(CanvasUniforms, horizon_line_px), 108);
+        assert_eq!(offset_of!(CanvasUniforms, horizon_glow_px), 112);
+        assert_eq!(offset_of!(CanvasUniforms, horizon_abc), 128);
+        assert_eq!(offset_of!(CanvasUniforms, horizon_color), 144);
+    }
 
     #[test]
     fn tilt_respects_existing_rotation_and_keeps_center_pinned() {

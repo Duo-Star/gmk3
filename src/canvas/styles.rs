@@ -165,6 +165,8 @@ pub struct CanvasColors {
     pub axis_name: [f32; 4],
     /// 画布边框灰阶（0..=255）。
     pub border_gray: u8,
+    /// 灭线（无穷远直线）颜色：细核心线 + 光晕同色。
+    pub horizon: [f32; 4],
 }
 
 impl CanvasColors {
@@ -177,6 +179,7 @@ impl CanvasColors {
         tick_label: [0.78, 0.78, 0.80, 0.92],
         axis_name: [0.92, 0.92, 0.94, 0.96],
         border_gray: 50,
+        horizon: [1.0, 1.0, 1.0, 1.0],
     };
 
     /// 日间主题。
@@ -188,6 +191,7 @@ impl CanvasColors {
         tick_label: [0.33, 0.33, 0.36, 0.92],
         axis_name: [0.15, 0.15, 0.18, 0.96],
         border_gray: 200,
+        horizon: [1.0, 0.82, 0.45, 1.0],
     };
 
     /// 按主题取配色。
