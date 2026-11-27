@@ -14,11 +14,24 @@ android {
         versionName = "0.1.0"
     }
 
+    // 固定共享签名密钥（提交在仓库里）：本地 dev.sh 与 GitHub CI 用同一把
+    // 密钥签名，两边打出的 APK 可以互相覆盖安装、升级。
+    // 这是个人分发用密钥（非 Play 上架）；以后要上架 Play 再换成私有密钥。
+    signingConfigs {
+        create("gmk3") {
+            storeFile = rootProject.file("keystore/gmk3.keystore")
+            storePassword = "gmk3gmk3"
+            keyAlias = "gmk3"
+            keyPassword = "gmk3gmk3"
+        }
+    }
+
     buildTypes {
-        // 个人自用阶段：release 也直接用 debug 签名，免去 keystore 管理
-        // （以后要上架 Play 再换成正式签名）
+        debug {
+            signingConfig = signingConfigs.getByName("gmk3")
+        }
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("gmk3")
             isMinifyEnabled = false
         }
     }

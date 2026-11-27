@@ -107,12 +107,14 @@ Rust 侧改动后 AS 里重新点 Run 不会自动重编 .so——先在命令�
 
 每次推送 `master` 都会自动构建发布版 APK（`.github/workflows/android.yml`，
 与 Vercel 的 web 部署 workflow 并行互不影响）：
-
 - 编译：Rust 交叉编译双架构 .so（dist 发布配置 = 无调试 + thin LTO 极致优化）
-- 打包：`assembleRelease`（debug 签名，免密钥管理），ABI 拆分一次性产出三个 APK：
+- 打包：`assembleRelease`，按 ABI 拆分一次性产出三个 APK：
   - `gmk3-android-arm64-v8a.apk`：仅真机（最小，推荐）
   - `gmk3-android-x86_64.apk`：仅模拟器
   - `gmk3-android-universal.apk`：双架构合一
+- 签名：仓库内共享密钥 `android/keystore/gmk3.keystore`（个人分发用，
+  非 Play 上架），本地 dev.sh 与 CI 用同一把钥匙，两边 APK 可互相覆盖安装；
+  打包后 CI 会用 apksigner 校验签名再发布
 - 发布：滚动 **latest** Release（每次覆盖旧的），另存一份 workflow artifact
 - 产物：仓库 Releases 页面 → 最新一条，下载 `gmk3-android.apk` 即可分发
 - 手动触发：仓库 Actions → Build Android APK → Run workflow

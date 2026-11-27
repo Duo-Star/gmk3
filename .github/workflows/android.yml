@@ -108,6 +108,14 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease -PenableAbiSplits --no-daemon
 
+      - name: 校验 APK 签名
+        run: |
+          A="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+          for f in app-arm64-v8a-release.apk app-x86_64-release.apk app-universal-release.apk; do
+            echo "== $f"
+            "$A" verify --print-certs "android/app/build/outputs/apk/release/$f"
+          done
+
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
