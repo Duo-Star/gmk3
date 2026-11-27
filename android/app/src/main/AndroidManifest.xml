@@ -1,15 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- hasCode=false：本 APK 没有 dex，只有 Rust 编译出的原生库 -->
+    <!-- 自定义 Activity 子类：Edge-to-Edge + WindowInsets 避让（见 Gmk3Activity.java） -->
     <application
         android:label="gmk3"
-        android:hasCode="false"
-        android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+        android:theme="@style/Theme.Gmk3">
 
-        <!-- 标准 NativeActivity：系统加载 lib_name 指定的 .so 并调用其 android_main -->
         <activity
-            android:name="android.app.NativeActivity"
+            android:name=".Gmk3Activity"
             android:label="gmk3"
             android:exported="true"
             android:screenOrientation="fullSensor"

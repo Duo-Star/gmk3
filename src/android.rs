@@ -11,8 +11,111 @@ use android_activity::AndroidApp;
 use crate::app::Gmk3App;
 use crate::monkey::Monkey;
 use eframe::egui;
+use jni::objects::{Global, JClass};
+use jni::JValue;
+use jni::JavaVM;
 use std::ffi::{c_void, CStr};
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::OnceLock;
 use std::time::Duration;
+
+/// JavaVM（android_main 里初始化一次），主题切换时用来附加当前线程
+static VM: OnceLock<JavaVM> = OnceLock::new();
+
+/// Gmk3Activity 的 JClass 全局引用：在 nativeUpdateInsets 回调里由系统
+/// 免费提供并缓存（原生线程上 FindClass 找不到应用类，这是标准做法）
+static ACTIVITY_CLASS: OnceLock<Global<JClass<'static>>> = OnceLock::new();
+
+/// 记录 JavaVM，供 set_system_bars 使用
+pub fn init_vm(vm: JavaVM) {
+    let _ = VM.set(vm);
+}
+
+/// 安全区边衬（像素）：[上, 下, 左, 右]。
+/// 由 Java 侧 Gmk3Activity 的 OnApplyWindowInsetsListener 通过 JNI 实时更新
+/// （状态栏/刘海/手势导航条变化、旋转、导航模式切换都会触发回调）。
+static INSETS: [AtomicI32; 4] = [AtomicI32::new(0), AtomicI32::new(0), AtomicI32::new(0), AtomicI32::new(0)];
+
+/// Gmk3Activity.nativeUpdateInsets 的 JNI 实现（由 libgmk3.so 导出，
+/// 系统解析 `com.duo.gmk3.Gmk3Activity` 的 native 方法时自动找到）。
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_duo_gmk3_Gmk3Activity_nativeUpdateInsets(
+    mut env: jni::JNIEnv,
+    class: JClass,
+    top: jni::sys::jint,
+    bottom: jni::sys::jint,
+    left: jni::sys::jint,
+    right: jni::sys::jint,
+) {
+    // 首次回调时缓存 JClass 全局引用（供反向调用 setSystemBarsStyle 使用）
+    if ACTIVITY_CLASS.get().is_none() {
+        match env.with_env(|env| env.new_global_ref(&class)).into_outcome() {
+            jni::Outcome::Ok(g) => {
+                let _ = ACTIVITY_CLASS.set(g);
+            }
+            jni::Outcome::Err(e) => {
+                log::error!("缓存 Gmk3Activity 的 JClass 全局引用失败: {e:?}");
+            }
+            jni::Outcome::Panic(p) => {
+                log::error!("缓存 Gmk3Activity 的 JClass 全局引用时发生 panic: {p:?}");
+            }
+        }
+    }
+
+    let old: Vec<i32> = INSETS.iter().map(|a| a.load(Ordering::Relaxed)).collect();
+    if [top, bottom, left, right] != [old[0], old[1], old[2], old[3]] {
+        log::info!("gmk3-insets: top={top} bottom={bottom} left={left} right={right}");
+    }
+    INSETS[0].store(top, Ordering::Relaxed);
+    INSETS[1].store(bottom, Ordering::Relaxed);
+    INSETS[2].store(left, Ordering::Relaxed);
+    INSETS[3].store(right, Ordering::Relaxed);
+}
+
+/// 当前安全区边衬（points，另加 4pt 呼吸空间），供 egui 把整个界面收进安全区。
+/// 注意 egui::Margin 字段是 i8，截断前先夹取到合理范围。
+pub fn safe_margin(pixels_per_point: f32) -> egui::Margin {
+    let side = |px: i32| -> i8 {
+        let pts = px.max(0) as f32 / pixels_per_point + 4.0;
+        pts.round().clamp(0.0, 100.0) as i8
+    };
+    egui::Margin {
+        top: side(INSETS[0].load(Ordering::Relaxed)),
+        bottom: side(INSETS[1].load(Ordering::Relaxed)),
+        left: side(INSETS[2].load(Ordering::Relaxed)),
+        right: side(INSETS[3].load(Ordering::Relaxed)),
+    }
+}
+
+/// 把系统栏配色同步为 egui 当前主题（面板底色 + 深浅图标）。
+///
+/// 只在主题切换瞬间调用一次（JNI 调用 + UI 线程消息，微秒级）；
+/// 不切换主题时完全不参与，零每帧开销。
+pub fn sync_system_bars(ctx: &egui::Context) {
+    let visuals = &ctx.global_style().visuals;
+    let c = visuals.window_fill;
+    let argb = (u32::from(c.a()) << 24)
+        | (u32::from(c.r()) << 16)
+        | (u32::from(c.g()) << 8)
+        | u32::from(c.b());
+    set_system_bars(visuals.dark_mode, argb);
+}
+
+fn set_system_bars(dark: bool, argb: u32) {
+    let Some(vm) = VM.get() else { return };
+    let Some(class) = ACTIVITY_CLASS.get() else { return };
+    let name = jni::strings::JNIString::from("setSystemBarsStyle");
+    let _ = vm.attach_current_thread(|env| -> std::result::Result<(), jni::errors::Error> {
+        env.call_static_method(
+            class,
+            &name,
+            jni::jni_sig!("(IZ)V"),
+            &[JValue::Int(argb as i32), JValue::Bool(dark)],
+        )?;
+        Ok(())
+    });
+    log::info!("gmk3-bars: 已同步系统栏 dark={dark} argb=#{argb:08X}");
+}
 
 /// 中文字体兜底：按 Android 官方规范解析各分区的 fonts.xml，
 /// 找到 lang="zh-Hans" 的字体文件，以最低优先级装进 egui。
@@ -183,6 +286,11 @@ pub fn android_main(app: AndroidApp) {
             .with_tag("gmk3"),
     );
     log::info!("gmk3 android_main 启动");
+
+    // 记录 JavaVM（主题切换时反向调用 Java 用）
+    init_vm(unsafe {
+        JavaVM::from_raw(app.vm_as_ptr() as *mut jni::sys::JavaVM)
+    });
 
     // 高刷屏上把窗口帧率从默认的 60fps 提到 120fps（见函数注释）
     request_high_refresh(&app);

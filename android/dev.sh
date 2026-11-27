@@ -20,7 +20,7 @@ ANDROID_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$ANDROID_DIR/.." && pwd)"
 
 PACKAGE="com.duo.gmk3"
-ACTIVITY="android.app.NativeActivity"
+ACTIVITY=".Gmk3Activity"
 JNI_DIR="$ANDROID_DIR/app/src/main/jniLibs"
 APK_DEBUG="$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
 APK_RELEASE="$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk"

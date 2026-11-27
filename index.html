@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
     <title>GeoMKY 3</title>
+    <!-- 显式指定构建 bin：包内另有同名 lib（Android .so 用），避免 trunk 混淆 -->
+    <link data-trunk rel="rust" data-bin="gmk3" />
     <style>
         html, body {
             margin: 0;

@@ -84,6 +84,11 @@ Rust 侧改动后 AS 里重新点 Run 不会自动重编 .so——先在命令�
 - **安装报 INSTALL_FAILED_USER_RESTRICTED**：vivo/小米等需在开发者
   选项里打开「USB 安装」
 - **应用黑屏**：看 logcat；渲染后端为 wgpu（优先 Vulkan，自动回退 GLES）
+- **刘海/状态栏/手势条遮挡界面**：已按现代标准处理——Edge-to-Edge
+  （targetSdk 36 系统强制，低版本在 Gmk3Activity.java 里兼容）+ 
+  WindowInsets 动态避让。Java 侧监听 `systemBars + displayCutout` 边衬，
+  JNI 回调给 Rust，egui 把整个界面收进安全区；旋转/切换导航模式自动跟随。
+  诊断：logcat 里 `gmk3-insets: top=.. bottom=.. left=.. right=..`
 - **高刷屏上掉帧/只有 60fps**：Android 厂商把非白名单应用的窗口默认限在
   60fps（浏览器在白名单里所以反而流畅）。本工程已在 `src/android.rs` 里
   通过 `ANativeWindow_setFrameRate(120, FixedSource)` 主动申请 120fps 解决。

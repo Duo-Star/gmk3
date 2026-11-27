@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 现代主题：无 ActionBar、窗口背景纯黑。
+         Edge-to-Edge 后系统栏/刘海区域露出的就是这层底色 -->
+    <style name="Theme.Gmk3" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

@@ -320,6 +320,8 @@ impl Gmk3App {
             }
             // 中文字体兜底：解析各分区 fonts.xml 找 zh-Hans 字体（见 android.rs）
             crate::android::install_cjk_fallback(&cc.egui_ctx);
+            // 启动时把系统栏配色同步成当前主题（之后仅切换主题时再同步）
+            crate::android::sync_system_bars(&cc.egui_ctx);
         }
 
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
@@ -381,6 +383,9 @@ impl Gmk3App {
                 } else {
                     ui.ctx().set_visuals(egui::Visuals::dark());
                 }
+                // Android：系统栏配色跟着应用主题走（仅切换瞬间一次调用）
+                #[cfg(target_os = "android")]
+                crate::android::sync_system_bars(ui.ctx());
             }
         });
     }
@@ -886,9 +891,26 @@ impl eframe::App for Gmk3App {
 
         // 每帧推进一次时间（暂停则冻结），帧内各处共用 self.time_sec
         self.advance_time();
-        let screen_rect = ui.max_rect();
-        let is_portrait = screen_rect.height() > screen_rect.width();
 
+        // Android：整块 UI 收进安全区（状态栏/刘海之下、手势导航条之上）；
+        // 其他平台 Margin::ZERO，布局行为完全不变
+        #[cfg(target_os = "android")]
+        let safe = crate::android::safe_margin(ui.ctx().pixels_per_point());
+        #[cfg(not(target_os = "android"))]
+        let safe = egui::Margin::ZERO;
+
+        // Android：把整个窗口（含系统栏后面露出的条）画成主题面板色。
+        // 边到边模式下系统栏透明，而 wgpu 表面清屏是不透明的黑，
+        // 不自己画的话那条永远是黑的，无法跟随主题。
+        #[cfg(target_os = "android")]
+        {
+            let bg = ui.visuals().panel_fill;
+            ui.painter().rect_filled(ui.max_rect(), 0.0, bg);
+        }
+
+        egui::Frame::new().inner_margin(safe).show(ui, |ui| {
+            let screen_rect = ui.max_rect();
+            let is_portrait = screen_rect.height() > screen_rect.width();
         if is_portrait {
             // 1. 顶部栏（与桌面端一致）
             let top_resp = egui::Panel::top("top_bar").show(ui, |ui| self.draw_top_bar(ui));
@@ -929,7 +951,8 @@ impl eframe::App for Gmk3App {
             egui::Panel::left("object_list").show(ui, |ui| self.draw_object_list(ui));
 
             egui::CentralPanel::default().show(ui, |ui| self.draw_canvas(ui, false, None));
-        }
+            }
+        });
 
         if !self.paused {
             ui.ctx().request_repaint();

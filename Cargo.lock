@@ -1399,6 +1399,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui-wgpu",
+ "jni",
  "libc",
  "log",
  "ndk",
