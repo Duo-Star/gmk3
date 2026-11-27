@@ -103,6 +103,18 @@ Rust 侧改动后 AS 里重新点 Run 不会自动重编 .so——先在命令�
   诊断：logcat 里 `gmk3-cjk: 已安装兜底中文字体 <路径>` 与
   `gmk3-cjk: 中文字形覆盖检查: true/false` 两条日志
 
+## GitHub Actions 自动发布 APK
+
+每次推送 `master` 都会自动构建发布版 APK（`.github/workflows/android.yml`，
+与 Vercel 的 web 部署 workflow 并行互不影响）：
+
+- 编译：Rust 交叉编译双架构 .so（dist 发布配置 = 无调试 + thin LTO 极致优化）
+- 打包：`assembleRelease`（debug 签名，免密钥管理）
+- 发布：滚动 **latest** Release（每次覆盖旧的），另存一份 workflow artifact
+- 产物：仓库 Releases 页面 → 最新一条，下载 `gmk3-android.apk` 即可分发
+- 手动触发：仓库 Actions → Build Android APK → Run workflow
+- 首次构建约 20–40 分钟（要下载 NDK + 全量编译），之后有缓存约 5–10 分钟
+
 ## 环境依赖（本机已装）
 
 rustup android 目标、NDK r30、cargo-ndk、JDK 17+、Gradle 9.9、

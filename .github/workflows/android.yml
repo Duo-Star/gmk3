@@ -1,0 +1,101 @@
+name: Build Android APK
+
+# 每次推送到 master：编译发布版 APK 并发布为滚动 latest Release
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust 工具链（含 Android 目标）
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Cargo 依赖缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+          key: cargo-deps-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-deps-
+
+      - name: Rust 构建产物缓存（Android 目标）
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/aarch64-linux-android
+            target/x86_64-linux-android
+          key: cargo-target-android-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-target-android-
+
+      - name: Android SDK + NDK
+        uses: android-actions/setup-android@v3
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Gradle 缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
+      - name: 安装 cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: 编译 Rust → libgmk3.so（dist 发布配置）
+        run: |
+          [ -n "$ANDROID_NDK_HOME" ] || export ANDROID_NDK_HOME="${ANDROID_NDK_ROOT:-}"
+          [ -n "$ANDROID_NDK_HOME" ] || export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/$(ls "$ANDROID_SDK_ROOT/ndk" | sort -V | tail -1)"
+          echo "NDK: $ANDROID_NDK_HOME"
+          cargo ndk -t arm64-v8a -t x86_64 -P 24 \
+            -o android/app/src/main/jniLibs \
+            build --profile dist --lib
+
+      - name: 打包 APK（release，debug 签名）
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: gmk3-android-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+
+      - name: 发布滚动 latest Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk gmk3-android.apk
+          gh release delete latest --yes --cleanup-tag || true
+          NOTES="push 到 master 自动构建的发布版（无调试信息 + thin LTO 极致优化，双架构）。
+
+          提交：${GITHUB_SHA}"
+          gh release create latest gmk3-android.apk \
+            --title "gmk3 Android（自动构建）" \
+            --notes "$NOTES" \
+            --latest

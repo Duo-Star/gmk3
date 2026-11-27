@@ -8,6 +8,11 @@ edition = "2024"
 name = "gmk3"
 crate-type = ["cdylib", "rlib"]
 
+# bin 与 lib 不能同名（trunk 的 wasm 构建会被两个同名产物搞混），bin 改名
+[[bin]]
+name = "gmk3-web"
+path = "src/main.rs"
+
 [dependencies]
 egui = "0.37"
 egui-wgpu = "0.37"

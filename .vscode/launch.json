@@ -8,11 +8,11 @@
       "cargo": {
         "args": [
           "build",
-          "--bin=gmk3",
+          "--bin=gmk3-web",
           "--package=gmk3"
         ],
         "filter": {
-          "name": "gmk3",
+          "name": "gmk3-web",
           "kind": "bin"
         }
       },
