@@ -91,7 +91,13 @@ jobs:
           restore-keys: gradle-
 
       - name: 安装 cargo-ndk
-        run: cargo install cargo-ndk --locked
+        run: |
+          # 缓存命中时二进制已在 ~/.cargo/bin，直接跳过（不依赖 cargo 的安装记录）
+          if command -v cargo-ndk >/dev/null 2>&1; then
+            echo "cargo-ndk 已存在（缓存命中），跳过安装"
+          else
+            cargo install cargo-ndk --locked
+          fi
 
       - name: 编译 Rust → libgmk3.so（dist 发布配置）
         run: |
