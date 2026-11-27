@@ -90,6 +90,13 @@ Rust 侧改动后 AS 里重新点 Run 不会自动重编 .so——先在命令�
   若个别机型仍被限制，可在系统「屏幕刷新率 → 应用高刷名单」里手动加白。
   注意：NDK r30 的 API<35 sysroot 移除了 libnativewindow.so，所以这个调用
   是运行时 dlsym 解析的（详见 android.rs 注释）
+- **部分机型中文显示为方框**：eframe 的 system_fonts（fontique）只扫描
+  `/system/fonts`，而不少机型的中文字体在 `/vendor/fonts`、`/data/fonts`
+  （可更新字体）等位置。本工程在 `src/android.rs` 的 `install_cjk_fallback`
+  里按 Android 官方规范解析 6 个分区的 fonts.xml，取 `lang="zh-Hans"` 的
+  字体（含 TTC index）以最低优先级装进 egui 兜底：零体积、零运行时开销。
+  诊断：logcat 里 `gmk3-cjk: 已安装兜底中文字体 <路径>` 与
+  `gmk3-cjk: 中文字形覆盖检查: true/false` 两条日志
 
 ## 环境依赖（本机已装）
 

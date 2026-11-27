@@ -106,6 +106,8 @@ pub struct Gmk3App {
     mobile_switch_anim: f32,
     #[cfg(target_os = "android")]
     perf: PerfLog,
+    #[cfg(target_os = "android")]
+    cjk_checked: bool,
 }
 
 fn label_anchor_to_egui(anchor: LabelAnchor) -> egui::Align2 {
@@ -311,9 +313,13 @@ pub fn custom_navigation_bar(ui: &mut Ui, selected_idx: &mut usize) {
 impl Gmk3App {
     pub fn new(cc: &eframe::CreationContext<'_>, monkey: Monkey) -> Self {
         #[cfg(target_os = "android")]
-        if let Some(rs) = cc.wgpu_render_state.as_ref() {
-            let info = rs.adapter.get_info();
-            log::info!("gmk3: 选中适配器 {:?}（backend={:?}）", info.name, info.backend);
+        {
+            if let Some(rs) = cc.wgpu_render_state.as_ref() {
+                let info = rs.adapter.get_info();
+                log::info!("gmk3: 选中适配器 {:?}（backend={:?}）", info.name, info.backend);
+            }
+            // 中文字体兜底：解析各分区 fonts.xml 找 zh-Hans 字体（见 android.rs）
+            crate::android::install_cjk_fallback(&cc.egui_ctx);
         }
 
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
@@ -346,6 +352,8 @@ impl Gmk3App {
                 frame_ms: 0.0,
                 solve_ms: 0.0,
             },
+            #[cfg(target_os = "android")]
+            cjk_checked: false,
         }
     }
 
@@ -864,6 +872,17 @@ impl eframe::App for Gmk3App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         #[cfg(target_os = "android")]
         let frame_start = Instant::now();
+
+        // 第一帧做一次中文字形覆盖检查（此时字体已加载完毕），
+        // 结果写进 logcat，方便在朋友手机上远程诊断
+        #[cfg(target_os = "android")]
+        if !self.cjk_checked {
+            self.cjk_checked = true;
+            let ok = ui
+                .ctx()
+                .fonts_mut(|f| f.has_glyphs(&egui::FontId::proportional(16.0), "中文测试"));
+            log::info!("gmk3-cjk: 中文字形覆盖检查: {ok}");
+        }
 
         // 每帧推进一次时间（暂停则冻结），帧内各处共用 self.time_sec
         self.advance_time();

@@ -1402,6 +1402,7 @@ dependencies = [
  "libc",
  "log",
  "ndk",
+ "roxmltree",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

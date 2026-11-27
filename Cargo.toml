@@ -40,6 +40,8 @@ log = "0.4"
 ndk = "0.9"
 # dlopen/dlsym 运行时解析符号
 libc = "0.2"
+# 解析 Android 各分区 fonts.xml，按官方规范找 zh-Hans 字体（见 android.rs 的中文兜底）
+roxmltree = "0.21"
 
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
