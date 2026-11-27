@@ -185,8 +185,8 @@ impl CanvasColors {
     /// 日间主题。
     pub const LIGHT: Self = Self {
         background: [0.97, 0.97, 0.98],
-        grid_minor: [0.84, 0.84, 0.86, 1.0],
-        grid_major: [0.66, 0.66, 0.69, 1.0],
+        grid_minor: [0.88, 0.88, 0.90, 1.0],
+        grid_major: [0.75, 0.75, 0.78, 1.0],
         axis: [0.36, 0.36, 0.40, 1.0],
         tick_label: [0.33, 0.33, 0.36, 0.92],
         axis_name: [0.15, 0.15, 0.18, 0.96],

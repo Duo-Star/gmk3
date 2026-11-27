@@ -19,6 +19,14 @@ use web_time::Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
+#[cfg(target_os = "android")]
+struct PerfLog {
+    t0: Instant,
+    frames: u32,
+    frame_ms: f64,
+    solve_ms: f64,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum MobileTab {
     Objects,
@@ -96,6 +104,8 @@ pub struct Gmk3App {
     mobile_last_tab: Option<MobileTab>,
     mobile_sheet_ratio: f32,
     mobile_switch_anim: f32,
+    #[cfg(target_os = "android")]
+    perf: PerfLog,
 }
 
 fn label_anchor_to_egui(anchor: LabelAnchor) -> egui::Align2 {
@@ -300,6 +310,12 @@ pub fn custom_navigation_bar(ui: &mut Ui, selected_idx: &mut usize) {
 
 impl Gmk3App {
     pub fn new(cc: &eframe::CreationContext<'_>, monkey: Monkey) -> Self {
+        #[cfg(target_os = "android")]
+        if let Some(rs) = cc.wgpu_render_state.as_ref() {
+            let info = rs.adapter.get_info();
+            log::info!("gmk3: 选中适配器 {:?}（backend={:?}）", info.name, info.backend);
+        }
+
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
             let gpu_res = CanvasGpuResources::new(&render_state.device, render_state.target_format);
             render_state
@@ -323,6 +339,13 @@ impl Gmk3App {
             mobile_last_tab: None,
             mobile_sheet_ratio: 0.3,
             mobile_switch_anim: 1.0,
+            #[cfg(target_os = "android")]
+            perf: PerfLog {
+                t0: Instant::now(),
+                frames: 0,
+                frame_ms: 0.0,
+                solve_ms: 0.0,
+            },
         }
     }
 
@@ -786,10 +809,16 @@ impl Gmk3App {
         self.plotter.set_theme(dark);
         let t = self.time_sec;
         let monkey = &mut self.monkey;
+        #[cfg(target_os = "android")]
+        let solve_start = Instant::now();
         self.plotter.update(t, |p| {
             monkey.solve();
             monkey.draw_into(p, dark);
         });
+        #[cfg(target_os = "android")]
+        {
+            self.perf.solve_ms += solve_start.elapsed().as_secs_f64() * 1e3;
+        }
 
         // 黑底 + wgpu 绘制回调 + 坐标文字 + 细框线
         let colors = self.plotter.colors;
@@ -833,6 +862,9 @@ impl Gmk3App {
 
 impl eframe::App for Gmk3App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        #[cfg(target_os = "android")]
+        let frame_start = Instant::now();
+
         // 每帧推进一次时间（暂停则冻结），帧内各处共用 self.time_sec
         self.advance_time();
         let screen_rect = ui.max_rect();
@@ -882,6 +914,27 @@ impl eframe::App for Gmk3App {
 
         if !self.paused {
             ui.ctx().request_repaint();
+        }
+
+        #[cfg(target_os = "android")]
+        {
+            self.perf.frames += 1;
+            self.perf.frame_ms += frame_start.elapsed().as_secs_f64() * 1e3;
+            let dt = self.perf.t0.elapsed().as_secs_f64();
+            if dt >= 3.0 {
+                log::info!(
+                    "gmk3-perf: FPS {:.1} | 平均帧时 {:.1}ms | solve+draw {:.1}ms",
+                    self.perf.frames as f64 / dt,
+                    self.perf.frame_ms / self.perf.frames as f64,
+                    self.perf.solve_ms / self.perf.frames as f64,
+                );
+                self.perf = PerfLog {
+                    t0: Instant::now(),
+                    frames: 0,
+                    frame_ms: 0.0,
+                    solve_ms: 0.0,
+                };
+            }
         }
     }
 }

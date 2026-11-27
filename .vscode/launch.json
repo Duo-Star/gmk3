@@ -2,6 +2,24 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "type": "lldb",
+      "request": "launch",
+      "name": "lldb Debug gmk3",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=gmk3",
+          "--package=gmk3"
+        ],
+        "filter": {
+          "name": "gmk3",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
       "name": "Trunk: Serve (--open)",
       "type": "node",
       "request": "launch",
@@ -35,6 +53,19 @@
       "runtimeArgs": [
         "-c",
         "cargo run --release"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "name": "Cargo: Run",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cargo run"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",

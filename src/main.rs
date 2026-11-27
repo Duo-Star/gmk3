@@ -20,7 +20,7 @@ fn se() -> AppCreator<'static> {
 }
 
 // 桌面端原生入口
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -32,6 +32,10 @@ fn main() -> eframe::Result {
 
     eframe::run_native("gmk3", options, se())
 }
+
+// Android 端入口在 lib 的 android_main（见 src/android.rs），此 bin 仅占位保证可编译
+#[cfg(target_os = "android")]
+fn main() {}
 
 // 网页端 (WebAssembly) 入口
 #[cfg(target_arch = "wasm32")]

@@ -10,3 +10,7 @@ pub mod monkey;
 pub mod pakoo_forest;
 
 pub mod gmk3_app;
+
+// Android 入口（导出 android_main），仅 Android 目标编译
+#[cfg(target_os = "android")]
+pub mod android;

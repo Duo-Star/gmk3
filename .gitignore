@@ -4,3 +4,12 @@
 .vercel
 .env*
 /dist/
+
+# Android（Gradle / Android Studio）
+/android/.gradle/
+/android/app/build/
+/android/local.properties
+/android/.kotlin/
+/.kotlin/
+# .so 是构建产物：本地由 dev.sh 编译，CI 上由 workflow 重新编译
+/android/app/src/main/jniLibs/

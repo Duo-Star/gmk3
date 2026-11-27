@@ -3,17 +3,61 @@ name = "gmk3"
 version = "0.1.0"
 edition = "2024"
 
+# cdylib：Android 端导出 libgmk3.so（NativeActivity 加载的入口库）
+[lib]
+name = "gmk3"
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
-eframe = "0.37"
 egui = "0.37"
 egui-wgpu = "0.37"
 wgpu = "30"
 bytemuck = { version = "1.25", features = ["derive"] }
 
+# 桌面 / 网页端：eframe 默认特性（含 wgpu 渲染器、内置字体、系统字体回退）
+[target.'cfg(not(target_os = "android"))'.dependencies]
+eframe = "0.37"
+
+# Android（NativeActivity）专用依赖：
+# - eframe 的 android-native-activity 特性让 winit 事件循环接上 Android Activity
+# - 注意：默认特性里的 accesskit 与 android-native-activity 冲突（需 game-activity），
+#   因此 Android 上关掉默认特性、只开用得到的：wgpu 渲染、内置字体、系统字体回退（CJK 靠它）
+# - android-activity 提供 android_main 入口约定与 ANativeActivity_onCreate glue
+# - android_logger 把 log 输出转发到 logcat
+[target.'cfg(target_os = "android")'.dependencies]
+eframe = { version = "0.37", default-features = false, features = [
+    "android-native-activity",
+    "default_fonts",
+    "system_fonts",
+    "wgpu",
+] }
+android-activity = { version = "0.6", features = ["native-activity"] }
+android_logger = "0.15"
+log = "0.4"
+# ANativeWindow 指针访问（用 android-activity 的 native_window() 返回类型）。
+# 注意不要开 nativewindow 特性：NDK r30 的 API<35 sysroot 已移除 libnativewindow.so，
+# 开启会链接失败；ANativeWindow_setFrameRate 改为运行时 dlsym 解析（见 src/android.rs）
+ndk = "0.9"
+# dlopen/dlsym 运行时解析符号
+libc = "0.2"
+
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-time = "1.1"
-wasm-bindgen = "0.2"           # 新增，修复 E0433
+wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["Document", "Window", "Element", "HtmlCanvasElement"] }
 log = "0.4"                    # 新增，WebLogger::init 需要
+
+# release 保留行号表：Android 崩溃栈可用 llvm-addr2line 还原到源码行（体积代价很小）
+[profile.release]
+debug = "line-tables-only"
+
+# 发布/演示版（dev.sh coooool 使用）：不带任何调试信息，体积与性能极致优化
+[profile.dist]
+inherits = "release"
+debug = false            # 不带任何调试信息（体积最小）
+strip = "symbols"        # 连符号表也剥掉
+lto = "thin"             # 跨 crate 内联优化（想要极致可用 "fat"，但链接慢、吃内存）
+codegen-units = 1        # 单代码生成单元，最大化优化
+panic = "abort"          # 发布版惯例：崩溃即终止（更小更快）

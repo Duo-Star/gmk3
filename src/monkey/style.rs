@@ -73,7 +73,7 @@ impl Palette {
     pub fn resolve(self, dark: bool) -> [f32; 4] {
         let rgb: [f32; 3] = match (self, dark) {
             (Palette::Atom, true) => [0.95, 0.95, 0.95],
-            (Palette::Atom, false) => [0.08, 0.08, 0.10],
+            (Palette::Atom, false) => [0.12, 0.12, 0.15],
             (Palette::Red, true) => [0.95, 0.42, 0.44],
             (Palette::Red, false) => [0.78, 0.15, 0.18],
             (Palette::Sun, true) => [0.96, 0.86, 0.30],

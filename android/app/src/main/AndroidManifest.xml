@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- hasCode=false：本 APK 没有 dex，只有 Rust 编译出的原生库 -->
+    <application
+        android:label="gmk3"
+        android:hasCode="false"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+
+        <!-- 标准 NativeActivity：系统加载 lib_name 指定的 .so 并调用其 android_main -->
+        <activity
+            android:name="android.app.NativeActivity"
+            android:label="gmk3"
+            android:exported="true"
+            android:screenOrientation="fullSensor"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|smallestScreenSize">
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="gmk3" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
