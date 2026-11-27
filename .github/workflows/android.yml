@@ -46,21 +46,32 @@ jobs:
 
       - name: Android SDK 组件（NDK / platform / build-tools）
         run: |
-          # runner 镜像自带 cmdline-tools（sdkmanager），只需补装缺的组件
-          yes | sdkmanager --licenses > /dev/null || true
-          yes | sdkmanager --install "platforms;android-36" "build-tools;36.0.0" || true
+          # runner 镜像自带 SDK（在 /usr/local/lib/android/sdk），
+          # 但环境变量不一定注入，这里自己定位并持久化
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "找不到 sdkmanager（SDK_ROOT=$SDK_ROOT）"; ls -la "$SDK_ROOT" 2>/dev/null || true; exit 1
+          fi
+          echo "SDK_ROOT=$SDK_ROOT"
+          echo "sdkmanager=$SDKMANAGER"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          yes | "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0" || true
           # 优先用与本地一致的 NDK r30；仓库里没有就取最新
-          if sdkmanager --list 2>/dev/null | grep -q "ndk;30.0.16248370"; then
+          if "$SDKMANAGER" --list 2>/dev/null | grep -q "ndk;30.0.16248370"; then
             NDK_PKG="ndk;30.0.16248370"
           else
-            NDK_PKG=$(sdkmanager --list 2>/dev/null | grep -oE "ndk;[0-9.]+" | sort -uV | tail -1)
+            NDK_PKG=$("$SDKMANAGER" --list 2>/dev/null | grep -oE "ndk;[0-9.]+" | sort -uV | tail -1)
           fi
+          if [ -z "$NDK_PKG" ]; then echo "未找到可用的 NDK 包"; exit 1; fi
           echo "安装 NDK: $NDK_PKG"
-          yes | sdkmanager --install "$NDK_PKG"
+          yes | "$SDKMANAGER" --install "$NDK_PKG"
           NDK_VER="${NDK_PKG#ndk;}"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$NDK_VER" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/$NDK_VER" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/$NDK_VER" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$SDK_ROOT/ndk/$NDK_VER" >> "$GITHUB_ENV"
 
       - name: JDK 21
         uses: actions/setup-java@v4
