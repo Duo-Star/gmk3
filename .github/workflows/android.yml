@@ -32,6 +32,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cargo/bin
+            # cargo install 的安装记录：没有它的话，缓存的二进制会被当成"已存在"而报错
+            ~/.cargo/.crates2.json
           key: cargo-deps-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-deps-
 
