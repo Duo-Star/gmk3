@@ -124,17 +124,22 @@ jobs:
           cp "$R/app-x86_64-release.apk" gmk3-android-x86_64.apk
           cp "$R/app-universal-release.apk" gmk3-android-universal.apk
           gh release delete latest --yes --cleanup-tag || true
-          NOTES="push 到 master 自动构建的发布版（无调试信息 + thin LTO 极致优化）。
+          NOTES="果谷树下，阳光微甜
+          很高兴发布 gmk3 的最新更新！
+          
+          也可以 使用 gmk3 在线版：[gmk3 online](https://gmk3.mduo.cloud/) 或在 [mDuo](https://www.mduo.cloud/) 找到我 😊
 
-          - gmk3-android-arm64-v8a.apk：仅真机（绝大多数手机）
-          - gmk3-android-x86_64.apk：仅模拟器
-          - gmk3-android-universal.apk：双架构合一
+          Android apk 安装包：
 
-          提交：${GITHUB_SHA}"
+          - gmk3-android-arm64-v8a.apk  ^^~  如果你不知道选哪个，你就选这个就对了
+          - gmk3-android-x86_64.apk
+          - gmk3-android-universal.apk
+
+          提交 sha: ${GITHUB_SHA}"
           gh release create latest \
             gmk3-android-arm64-v8a.apk \
             gmk3-android-x86_64.apk \
             gmk3-android-universal.apk \
-            --title "gmk3 Android（自动构建）" \
+            --title "gmk3 for Android" \
             --notes "$NOTES" \
             --latest
