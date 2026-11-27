@@ -100,28 +100,41 @@ jobs:
             -o android/app/src/main/jniLibs \
             build --profile dist --lib
 
-      - name: 打包 APK（release，debug 签名）
+      - name: 打包 APK（release，debug 签名，按 ABI 拆三个）
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease -PenableAbiSplits --no-daemon
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: gmk3-android-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: gmk3-android-apks
+          path: |
+            android/app/build/outputs/apk/release/app-arm64-v8a-release.apk
+            android/app/build/outputs/apk/release/app-x86_64-release.apk
+            android/app/build/outputs/apk/release/app-universal-release.apk
 
       - name: 发布滚动 latest Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk gmk3-android.apk
+          R=android/app/build/outputs/apk/release
+          cp "$R/app-arm64-v8a-release.apk" gmk3-android-arm64-v8a.apk
+          cp "$R/app-x86_64-release.apk" gmk3-android-x86_64.apk
+          cp "$R/app-universal-release.apk" gmk3-android-universal.apk
           gh release delete latest --yes --cleanup-tag || true
-          NOTES="push 到 master 自动构建的发布版（无调试信息 + thin LTO 极致优化，双架构）。
+          NOTES="push 到 master 自动构建的发布版（无调试信息 + thin LTO 极致优化）。
+
+          - gmk3-android-arm64-v8a.apk：仅真机（绝大多数手机）
+          - gmk3-android-x86_64.apk：仅模拟器
+          - gmk3-android-universal.apk：双架构合一
 
           提交：${GITHUB_SHA}"
-          gh release create latest gmk3-android.apk \
+          gh release create latest \
+            gmk3-android-arm64-v8a.apk \
+            gmk3-android-x86_64.apk \
+            gmk3-android-universal.apk \
             --title "gmk3 Android（自动构建）" \
             --notes "$NOTES" \
             --latest

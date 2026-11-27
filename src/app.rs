@@ -46,16 +46,13 @@ impl MobileTab {
 fn draw_tab_icon(painter: &egui::Painter, center: egui::Pos2, tab: MobileTab, color: Color32) {
     let stroke = Stroke::new(1.8, color);
     let r = 7.0; // 图标基准半径
-
     match tab {
-        // 1. 三角形（正三角形）
         MobileTab::Objects => {
             let p1 = center + vec2(0.0, -r);
             let p2 = center + vec2(r * 0.866, r * 0.6);
             let p3 = center + vec2(-r * 0.866, r * 0.6);
             painter.add(egui::Shape::closed_line(vec![p1, p2, p3], stroke));
         }
-        // 2. 直线和圆相交（圆略向左上微偏，斜线向右下偏移形成割线）
         MobileTab::Act => {
             let c = center + vec2(-r * 0.12, -r * 0.12);
             let cr = r * 0.72;
@@ -65,14 +62,12 @@ fn draw_tab_icon(painter: &egui::Painter, center: egui::Pos2, tab: MobileTab, co
             let dir = vec2(r * 0.85, -r * 0.85);
             painter.line_segment([c + shift + dir, c + shift - dir], stroke);
         }
-        // 3. 田字格（外框 + 十字中线）
         MobileTab::Properties => {
             let rect = egui::Rect::from_center_size(center, vec2(r * 1.8, r * 1.8));
             painter.rect_stroke(rect, CornerRadius::same(2), stroke, StrokeKind::Inside);
             painter.line_segment([rect.center_top(), rect.center_bottom()], stroke);
             painter.line_segment([rect.left_center(), rect.right_center()], stroke);
         }
-        // 4. 横放置的沙漏（棱角分明的蝴蝶结：左右两个对顶三角形）
         MobileTab::Tools => {
             let w = r * 0.78;
             let h = r * 0.68;
@@ -200,123 +195,17 @@ fn custom_rounded_square_button(ui: &mut Ui) -> egui::Response {
     response
 }
 
-/// 单个仿 Navigation Bar 导航项
-pub fn nav_bar_item(
-    ui: &mut Ui,
-    selected: bool,
-    icon_text: &str, // 演示用字符图标，实际可替换为自定义绘图或图片
-    label: &str,
-) -> Response {
-    // 1. 导航项标准尺寸（宽 72，高 64）
-    let size = vec2(72.0, 64.0);
-    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-
-    if ui.is_rect_visible(rect) {
-        let visuals = ui.style().interact(&response);
-
-        // 2. 确定选中态与未选中态的颜色
-        let (pill_bg, content_color) = if selected {
-            (
-                Color32::from_rgb(208, 228, 255), // 选中时的胶囊背景色
-                Color32::from_rgb(0, 29, 54),     // 选中时的图标/文字高亮色
-            )
-        } else if response.hovered() {
-            (
-                Color32::from_white_alpha(20), // 悬停时的微弱提示背景
-                visuals.fg_stroke.color,
-            )
-        } else {
-            (Color32::TRANSPARENT, visuals.text_color())
-        };
-
-        // 3. 绘制顶部的圆角胶囊背景（类似 Material 3 指示器）
-        let pill_size = vec2(56.0, 32.0);
-        let pill_center = rect.center_top() + vec2(0.0, 22.0);
-        let pill_rect = egui::Rect::from_center_size(pill_center, pill_size);
-
-        if pill_bg != Color32::TRANSPARENT {
-            ui.painter().rect(
-                pill_rect,
-                CornerRadius::same(16), // 高度的一半即全圆角胶囊
-                pill_bg,
-                Stroke::NONE,
-                StrokeKind::Inside,
-            );
-        }
-
-        // 4. 在胶囊中心绘制图标（此处复用你的线段绘制逻辑画一个示例图标，也可直接绘制文字/SVG）
-        let half_len = 7.0;
-        let icon_stroke = Stroke::new(2.0, content_color);
-        if icon_text == "+" {
-            ui.painter().line_segment(
-                [
-                    pill_center - vec2(half_len, 0.0),
-                    pill_center + vec2(half_len, 0.0),
-                ],
-                icon_stroke,
-            );
-            ui.painter().line_segment(
-                [
-                    pill_center - vec2(0.0, half_len),
-                    pill_center + vec2(0.0, half_len),
-                ],
-                icon_stroke,
-            );
-        } else {
-            ui.painter().text(
-                pill_center,
-                Align2::CENTER_CENTER,
-                icon_text,
-                FontId::proportional(18.0),
-                content_color,
-            );
-        }
-
-        // 5. 在胶囊下方绘制导航标签文字
-        let text_pos = rect.center_bottom() - vec2(0.0, 12.0);
-        ui.painter().text(
-            text_pos,
-            Align2::CENTER_CENTER,
-            label,
-            FontId::proportional(12.0),
-            content_color,
-        );
-    }
-
-    response
-}
-
-/// 组合成完整的 Navigation Bar
-pub fn custom_navigation_bar(ui: &mut Ui, selected_idx: &mut usize) {
-    let items = [("⌂", "首页"), ("★", "收藏"), ("+", "发布"), ("⚙", "设置")];
-
-    egui::Frame::new()
-        .fill(ui.visuals().window_fill())
-        .stroke(Stroke::new(
-            1.0,
-            ui.visuals().widgets.noninteractive.bg_stroke.color,
-        ))
-        .corner_radius(CornerRadius::same(16))
-        .inner_margin(egui::Margin::symmetric(12, 4))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
-                for (idx, (icon, label)) in items.iter().enumerate() {
-                    if nav_bar_item(ui, *selected_idx == idx, icon, label).clicked() {
-                        *selected_idx = idx;
-                    }
-                }
-            });
-        });
-}
-
 impl Gmk3App {
     pub fn new(cc: &eframe::CreationContext<'_>, monkey: Monkey) -> Self {
         #[cfg(target_os = "android")]
         {
             if let Some(rs) = cc.wgpu_render_state.as_ref() {
                 let info = rs.adapter.get_info();
-                log::info!("gmk3: 选中适配器 {:?}（backend={:?}）", info.name, info.backend);
+                log::info!(
+                    "gmk3: 选中适配器 {:?}（backend={:?}）",
+                    info.name,
+                    info.backend
+                );
             }
             // 中文字体兜底：解析各分区 fonts.xml 找 zh-Hans 字体（见 android.rs）
             crate::android::install_cjk_fallback(&cc.egui_ctx);
@@ -375,8 +264,8 @@ impl Gmk3App {
     /// 1. 上方栏
     fn draw_top_bar(&self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label("gmk3 2026.11.17 duo");
-            if ui.button("切换主题").clicked() {
+            ui.label("gmk3 2026.11.27 duo");
+            if ui.button("切换主题喵").clicked() {
                 let is_dark = ui.visuals().dark_mode;
                 if is_dark {
                     ui.ctx().set_visuals(egui::Visuals::light());
@@ -757,17 +646,11 @@ impl Gmk3App {
         } else {
             (egui::PointerButton::Primary, egui::PointerButton::Secondary)
         };
-        if !multi_touch_active
-            && !pointer_blocked
-            && response.double_clicked_by(tilt_btn)
-        {
+        if !multi_touch_active && !pointer_blocked && response.double_clicked_by(tilt_btn) {
             self.plotter.animate_proj_matrix_to(Mat3F64::IDENTITY);
         }
         // 3. 拖动倾斜键：转动射影视角（直接更新 proj_matrix，并取消进行中的动画）
-        else if !multi_touch_active
-            && !pointer_blocked
-            && response.dragged_by(tilt_btn)
-        {
+        else if !multi_touch_active && !pointer_blocked && response.dragged_by(tilt_btn) {
             self.plotter.cancel_proj_anim();
             let delta = response.drag_delta();
             let dx_ndc = (2.6 * delta.x / (0.5 * canvas_rect.width())) as f64;
@@ -911,46 +794,47 @@ impl eframe::App for Gmk3App {
         egui::Frame::new().inner_margin(safe).show(ui, |ui| {
             let screen_rect = ui.max_rect();
             let is_portrait = screen_rect.height() > screen_rect.width();
-        if is_portrait {
-            // 1. 顶部栏（与桌面端一致）
-            let top_resp = egui::Panel::top("top_bar").show(ui, |ui| self.draw_top_bar(ui));
+            if is_portrait {
+                // 1. 顶部栏（与桌面端一致）
+                let top_resp = egui::Panel::top("top_bar").show(ui, |ui| self.draw_top_bar(ui));
 
-            // 2. 底部窄条选择栏（对象列表 / 操作栏 / 属性栏 / 工具栏）
-            let bottom_resp = egui::Panel::bottom("mobile_bottom_bar")
-                .resizable(false)
-                .show(ui, |ui| self.draw_mobile_bottom_bar(ui));
+                // 2. 底部窄条选择栏（对象列表 / 操作栏 / 属性栏 / 工具栏）
+                let bottom_resp = egui::Panel::bottom("mobile_bottom_bar")
+                    .resizable(false)
+                    .show(ui, |ui| self.draw_mobile_bottom_bar(ui));
 
-            let sheet_geom = self.compute_mobile_sheet_geometry(
-                ui.ctx(),
-                screen_rect,
-                top_resp.response.rect.bottom(),
-                bottom_resp.response.rect.top(),
-            );
-            let blocking_rect = sheet_geom.map(|(r, ..)| r);
+                let sheet_geom = self.compute_mobile_sheet_geometry(
+                    ui.ctx(),
+                    screen_rect,
+                    top_resp.response.rect.bottom(),
+                    bottom_resp.response.rect.top(),
+                );
+                let blocking_rect = sheet_geom.map(|(r, ..)| r);
 
-            // 3. 中间最下层绘图区（无空隙）
-            egui::CentralPanel::no_frame()
-                .show(ui, |ui| self.draw_canvas(ui, true, blocking_rect));
+                // 3. 中间最下层绘图区（无空隙）
+                egui::CentralPanel::no_frame()
+                    .show(ui, |ui| self.draw_canvas(ui, true, blocking_rect));
 
-            // 4. 上浮覆盖层（从底栏上边缘向上展开）
-            if let Some(geom) = sheet_geom {
-                self.draw_mobile_sheet(ui.ctx(), screen_rect, geom);
-            }
-        } else {
-            // 桌面端布局
-            egui::Panel::top("top_bar").show(ui, |ui| self.draw_top_bar(ui));
-            egui::Panel::top("act_bar").show(ui, |ui| self.draw_act_bar(ui));
+                // 4. 上浮覆盖层（从底栏上边缘向上展开）
+                if let Some(geom) = sheet_geom {
+                    self.draw_mobile_sheet(ui.ctx(), screen_rect, geom);
+                }
+            } else {
+                // 桌面端布局
+                egui::Panel::top("top_bar").show(ui, |ui| self.draw_top_bar(ui));
+                egui::Panel::top("act_bar").show(ui, |ui| self.draw_act_bar(ui));
 
-            egui::Panel::right("tool_switch")
-                .resizable(false)
-                .max_size(54.0)
-                .show(ui, |ui| self.draw_tool_switch(ui));
+                egui::Panel::right("tool_switch")
+                    .resizable(false)
+                    .max_size(54.0)
+                    .show(ui, |ui| self.draw_tool_switch(ui));
 
-            egui::Panel::right("properties_panel").show(ui, |ui| self.draw_properties_panel(ui));
+                egui::Panel::right("properties_panel")
+                    .show(ui, |ui| self.draw_properties_panel(ui));
 
-            egui::Panel::left("object_list").show(ui, |ui| self.draw_object_list(ui));
+                egui::Panel::left("object_list").show(ui, |ui| self.draw_object_list(ui));
 
-            egui::CentralPanel::default().show(ui, |ui| self.draw_canvas(ui, false, None));
+                egui::CentralPanel::default().show(ui, |ui| self.draw_canvas(ui, false, None));
             }
         });
 

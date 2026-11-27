@@ -28,4 +28,16 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    // ABI 拆分：仅 CI 用（-PenableAbiSplits）一次产出三个 APK：
+    //   app-arm64-v8a-release.apk / app-x86_64-release.apk / app-universal-release.apk
+    // 本地 dev.sh 不传该属性，仍产出单一 app-release.apk，流程不变
+    splits {
+        abi {
+            isEnable = project.hasProperty("enableAbiSplits")
+            reset()
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = true
+        }
+    }
 }
